@@ -292,6 +292,44 @@ export function drawRemnants(ctx, remnants) {
 }
 
 /**
+ * Draw a brief centred message overlay (fades in quickly, lingers, then fades out).
+ * Has no effect when message is empty or timer has expired.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {string} message
+ * @param {number} timer   - Seconds remaining for this message.
+ * @param {number} total   - Total duration the message is displayed (used for fade-out).
+ */
+export function drawUIMessage(ctx, message, timer, total = 2.0) {
+  if (!message || timer <= 0) return;
+
+  // Fade out in the last 0.4 s of the message lifetime
+  const alpha = timer < 0.4 ? timer / 0.4 : 1;
+
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const w = 260;
+  const h = 40;
+  const x = (CANVAS_WIDTH  - w) / 2;
+  const y = (CANVAS_HEIGHT - h) / 2 - 40; // slightly above centre
+
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+  ctx.fillRect(x, y, w, h);
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(x, y, w, h);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font      = 'bold 17px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(message, CANVAS_WIDTH / 2, y + h / 2 + 6);
+
+  ctx.restore();
+}
+
+/**
  * Draw the HUD overlay.
  *
  * @param {CanvasRenderingContext2D} ctx
@@ -302,6 +340,8 @@ export function drawRemnants(ctx, remnants) {
  *   goalReached:       boolean,
  *   levelComplete:     boolean,
  *   isLastLevel:       boolean,
+ *   runState:          string,
+ *   failTimer:         number,
  *   hint:              string,
  *   snapshotCount:     number,
  *   capturedCount:     number,
@@ -318,6 +358,8 @@ export function drawHUD(ctx, hud) {
     goalReached,
     levelComplete,
     isLastLevel,
+    runState,
+    failTimer,
     hint,
     snapshotCount,
     capturedCount,
@@ -426,11 +468,33 @@ export function drawHUD(ctx, hud) {
 
   // Controls
   ctx.fillStyle = 'rgba(100,220,255,0.45)';
-  ctx.fillText('R — leave an echo   T — restart level', 12, CANVAS_HEIGHT - 30);
+  ctx.fillText('R — leave an echo   T — restart level   F1 — debug', 12, CANVAS_HEIGHT - 30);
 
   if (levelComplete) {
     ctx.fillStyle = 'rgba(100,220,255,0.45)';
     ctx.fillText('N — next level', 12, CANVAS_HEIGHT - 14);
+  }
+
+  // ── Fail state banner ─────────────────────────────────────────────────────
+
+  if (runState === 'failed') {
+    // Darken the screen
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+    ctx.fillRect(0, CANVAS_HEIGHT / 2 - 50, CANVAS_WIDTH, 100);
+
+    ctx.fillStyle = '#ff4466';
+    ctx.font      = 'bold 32px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('Run Failed', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 6);
+
+    // Countdown until restart
+    const restartIn = Math.max(0, failTimer).toFixed(1);
+    ctx.font      = '13px monospace';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillText(`Restarting in ${restartIn}s   (T — restart now)`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 22);
   }
 
   // ── Level completion banner ───────────────────────────────────────────────
