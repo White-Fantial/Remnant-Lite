@@ -32,13 +32,14 @@ export function drawPlatforms(ctx, platforms) {
  * Draw all interactable entities: buttons, doors, and goal zones.
  * @param {CanvasRenderingContext2D} ctx
  * @param {Array} interactables
- * @param {object | null} activeRemnant - Active Remnant, used to draw the
- *   button→door link line when the Remnant is pressing a button.
+ * @param {object[]} remnants - Active Remnants array, used to draw the
+ *   button→door link line when a Remnant is pressing a button.
  */
-export function drawInteractables(ctx, interactables, activeRemnant) {
+export function drawInteractables(ctx, interactables, remnants) {
   // Draw a faint debug line from each pressed button to its linked door
   // so the player can understand the puzzle at a glance.
-  if (activeRemnant) {
+  const hasRemnants = Array.isArray(remnants) && remnants.length > 0;
+  if (hasRemnants) {
     for (const button of interactables) {
       if (button.type !== 'button' || !button.isPressed || !button.targets) continue;
       const isRemnantPressing =
@@ -194,7 +195,7 @@ export function drawPlayer(ctx, position, isGrounded) {
 }
 
 /**
- * Draw the active Remnant ghost with clear visual states:
+ * Draw a single Remnant ghost with clear visual states:
  *
  *  1. Normal (non-solid replay):  translucent blue fill, thin outline.
  *  2. Warning (approaching solid): brighter, animated pulsing outline.
@@ -203,11 +204,10 @@ export function drawPlayer(ctx, position, isGrounded) {
  *  4. Finished + non-solid:        very faint — Remnant ended before solid phase.
  *
  * @param {CanvasRenderingContext2D} ctx
- * @param {object | null} remnant - Active Remnant entity, or null.
+ * @param {object} remnant - Active Remnant entity.
+ * @param {number} index - Zero-based position in the remnants array (for labels).
  */
-export function drawRemnant(ctx, remnant) {
-  if (!remnant) return;
-
+function drawSingleRemnant(ctx, remnant, index) {
   const { isSolidToPlayer, isFinished, solidPhaseStartTime, currentTime } = remnant;
 
   // Time remaining until solid phase begins (negative when already in solid phase).
@@ -236,8 +236,6 @@ export function drawRemnant(ctx, remnant) {
 
   } else if (isPreSolid) {
     // --- Warning phase: animated pulse in the 0.5 s window before solid ---
-    // Date.now() drives the pulse so no timestamp plumbing is needed for
-    // this purely cosmetic effect.  Frame-rate variation is not noticeable.
     const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.014);
 
     ctx.globalAlpha = 0.38 + pulse * 0.18;
@@ -272,128 +270,194 @@ export function drawRemnant(ctx, remnant) {
     ctx.strokeRect(remnant.x, remnant.y, remnant.width, remnant.height);
   }
 
+  // Small "R1" / "R2" label above so multiple Remnants stay distinguishable
+  ctx.globalAlpha = 0.75;
+  ctx.fillStyle = isSolidToPlayer ? '#ffffff' : '#a8c8ff';
+  ctx.font = 'bold 8px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(`R${index + 1}`, remnant.x + remnant.width / 2, remnant.y - (isSolidToPlayer ? 14 : 4));
+
   // Restore full opacity for subsequent draw calls
   ctx.globalAlpha = 1;
 }
 
 /**
- * Draw the HUD overlay: level name, goal state, recording stats, and hints.
+ * Draw all active Remnants.
  * @param {CanvasRenderingContext2D} ctx
- * @param {string} levelName
- * @param {boolean} goalReached
- * @param {string} [hint]
- * @param {{
- *   snapshotCount:  number,
- *   capturedCount:  number,
- *   activeRemnant:  object | null,
- *   interactables?: Array,
- * }} [recording]
+ * @param {object[]} remnants - Array of active Remnant entities.
  */
-export function drawHUD(ctx, levelName, goalReached, hint, recording) {
+export function drawRemnants(ctx, remnants) {
+  for (let i = 0; i < remnants.length; i++) {
+    drawSingleRemnant(ctx, remnants[i], i);
+  }
+}
+
+/**
+ * Draw the HUD overlay.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {{
+ *   levelName:         string,
+ *   levelIndex:        number,
+ *   totalLevels:       number,
+ *   goalReached:       boolean,
+ *   levelComplete:     boolean,
+ *   isLastLevel:       boolean,
+ *   hint:              string,
+ *   snapshotCount:     number,
+ *   capturedCount:     number,
+ *   remnants:          object[],
+ *   maxRemnants:       number,
+ *   interactables:     Array,
+ * }} hud
+ */
+export function drawHUD(ctx, hud) {
+  const {
+    levelName,
+    levelIndex,
+    totalLevels,
+    goalReached,
+    levelComplete,
+    isLastLevel,
+    hint,
+    snapshotCount,
+    capturedCount,
+    remnants,
+    maxRemnants,
+    interactables,
+  } = hud;
+
   ctx.textAlign = 'left';
   ctx.font = '13px monospace';
 
-  // Level name — top-left
+  // ── Top-left column ──────────────────────────────────────────────────────
+
+  // Level number + name
   if (levelName) {
-    ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.fillText(levelName, 12, 20);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = 'bold 13px monospace';
+    ctx.fillText(`Level ${levelIndex + 1}/${totalLevels}: ${levelName}`, 12, 20);
+    ctx.font = '13px monospace';
   }
 
-  // Recording / Remnant stats — top-left below level name
-  if (recording) {
-    ctx.fillStyle = 'rgba(100,220,255,0.7)';
-    ctx.fillText(`Recording: ${recording.snapshotCount} samples`, 12, 40);
+  // Remnant count
+  const remnantCount = remnants.length;
+  ctx.fillStyle = remnantCount >= maxRemnants
+    ? 'rgba(255,180,80,0.9)'   // orange when at limit
+    : 'rgba(168,200,255,0.85)'; // blue normally
+  ctx.fillText(`Echoes: ${remnantCount} / ${maxRemnants}`, 12, 40);
 
-    // Captured timeline sample count (shown once at least one commit has been made)
-    if (recording.capturedCount > 0) {
-      ctx.fillStyle = 'rgba(245,197,24,0.85)';
-      ctx.fillText(`Captured: ${recording.capturedCount} samples`, 12, 57);
-    }
+  // Recording sample count
+  ctx.fillStyle = 'rgba(100,220,255,0.7)';
+  ctx.fillText(`Recording: ${snapshotCount} samples`, 12, 57);
 
-    // Active Remnant status
-    const r = recording.activeRemnant;
+  // Captured timeline count (shown once committed at least once)
+  if (capturedCount > 0) {
+    ctx.fillStyle = 'rgba(245,197,24,0.85)';
+    ctx.fillText(`Captured: ${capturedCount} samples`, 12, 74);
+  }
+
+  // Per-remnant status (most recent only when multiple exist)
+  if (remnants.length > 0) {
+    const r = remnants[remnants.length - 1]; // newest
     let remnantStatus;
-    if (!r) {
-      remnantStatus = 'None';
-    } else if (r.isFinished) {
+    if (r.isFinished) {
       remnantStatus = 'Finished';
     } else {
       remnantStatus = 'Playing';
     }
-
+    const yBase = capturedCount > 0 ? 91 : 74;
     ctx.fillStyle = 'rgba(168,200,255,0.8)';
-    ctx.fillText(`Remnant: ${remnantStatus}`, 12, 74);
+    ctx.fillText(`Latest echo: ${remnantStatus}`, 12, yBase);
 
-    // Solid-phase status — shown whenever a Remnant exists
-    if (r) {
-      const solidLabel = r.isSolidToPlayer ? 'ON' : 'OFF';
-      ctx.fillStyle = r.isSolidToPlayer
-        ? 'rgba(144,200,255,1.0)'   // bright when solid
-        : 'rgba(168,200,255,0.5)';  // dim when not yet solid
-      ctx.fillText(`Solid Phase: ${solidLabel}`, 12, 91);
-    }
+    // Solid-phase status
+    const solidLabel = r.isSolidToPlayer ? 'ON' : 'OFF';
+    ctx.fillStyle = r.isSolidToPlayer
+      ? 'rgba(144,200,255,1.0)'
+      : 'rgba(168,200,255,0.5)';
+    ctx.fillText(`Solid Phase: ${solidLabel}`, 12, yBase + 17);
 
-    // Remnant time — shown while actively replaying
-    if (r && !r.isFinished) {
+    // Replay time
+    if (!r.isFinished) {
       const current  = (r.currentTime  / 1000).toFixed(2);
       const duration = (r.duration     / 1000).toFixed(2);
       const solidAt  = (r.solidPhaseStartTime / 1000).toFixed(2);
       ctx.fillStyle = 'rgba(168,200,255,0.6)';
-      ctx.fillText(`Replay: ${current}s / ${duration}s`, 12, 108);
+      ctx.fillText(`Replay: ${current}s / ${duration}s`, 12, yBase + 34);
       ctx.fillStyle = 'rgba(144,200,255,0.5)';
-      ctx.fillText(`Solid starts: ${solidAt}s`, 12, 125);
-    }
-
-    // Button state — shown when interactables are available
-    if (recording.interactables) {
-      const buttons = recording.interactables.filter(e => e.type === 'button');
-      if (buttons.length > 0) {
-        const button = buttons[0]; // show first button for now
-        let buttonLabel;
-        if (!button.isPressed) {
-          buttonLabel = 'None';
-        } else if (
-          Array.isArray(button.pressedBy) &&
-          button.pressedBy.some(id => id !== 'player') &&
-          button.pressedBy.includes('player')
-        ) {
-          buttonLabel = 'Player + Remnant';
-        } else if (
-          Array.isArray(button.pressedBy) &&
-          button.pressedBy.some(id => id !== 'player')
-        ) {
-          buttonLabel = 'Remnant';
-        } else {
-          buttonLabel = 'Player';
-        }
-        ctx.fillStyle = 'rgba(255,220,100,0.75)';
-        ctx.fillText(`Button: ${buttonLabel}`, 12, 142);
-      }
+      ctx.fillText(`Solid starts: ${solidAt}s`, 12, yBase + 51);
     }
   }
 
-  // Hint — bottom of screen (level-specific, only shown when provided)
+  // Button state
+  if (interactables) {
+    const buttons = interactables.filter(e => e.type === 'button');
+    if (buttons.length > 0) {
+      const button = buttons[0];
+      let buttonLabel;
+      if (!button.isPressed) {
+        buttonLabel = 'None';
+      } else if (
+        Array.isArray(button.pressedBy) &&
+        button.pressedBy.some(id => id !== 'player') &&
+        button.pressedBy.includes('player')
+      ) {
+        buttonLabel = 'Player + Echo';
+      } else if (
+        Array.isArray(button.pressedBy) &&
+        button.pressedBy.some(id => id !== 'player')
+      ) {
+        buttonLabel = 'Echo';
+      } else {
+        buttonLabel = 'Player';
+      }
+      ctx.fillStyle = 'rgba(255,220,100,0.75)';
+      // Place button label below the remnant block — use a fixed offset from bottom
+      ctx.fillText(`Button: ${buttonLabel}`, 12, 200);
+    }
+  }
+
+  // ── Bottom strip ─────────────────────────────────────────────────────────
+
+  // Hint text
   if (hint) {
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillText(hint, 12, CANVAS_HEIGHT - 30);
+    ctx.fillText(hint, 12, CANVAS_HEIGHT - 46);
   }
 
-  // Remnant commit hint — bottom of screen
+  // Controls
   ctx.fillStyle = 'rgba(100,220,255,0.45)';
-  ctx.fillText('Press R to leave a Remnant', 12, CANVAS_HEIGHT - 14);
+  ctx.fillText('R — leave an echo   T — restart level', 12, CANVAS_HEIGHT - 30);
 
-  // Goal reached banner
+  if (levelComplete) {
+    ctx.fillStyle = 'rgba(100,220,255,0.45)';
+    ctx.fillText('N — next level', 12, CANVAS_HEIGHT - 14);
+  }
+
+  // ── Level completion banner ───────────────────────────────────────────────
+
   if (goalReached) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-    ctx.fillRect(0, CANVAS_HEIGHT / 2 - 34, CANVAS_WIDTH, 68);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.60)';
+    ctx.fillRect(0, CANVAS_HEIGHT / 2 - 44, CANVAS_WIDTH, 88);
 
-    ctx.fillStyle = '#64dcff';
-    ctx.font = 'bold 30px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('Level Complete!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+    if (isLastLevel) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = 'bold 30px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Tutorial Complete!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 4);
 
-    ctx.font = '14px monospace';
-    ctx.fillStyle = 'rgba(255,255,255,0.7)';
-    ctx.fillText('Goal reached', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 32);
+      ctx.font = '14px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText('You have mastered the Echo mechanic.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+    } else {
+      ctx.fillStyle = '#64dcff';
+      ctx.font = 'bold 30px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('Level Complete!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 4);
+
+      ctx.font = '14px monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillText('Press N for the next level', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+    }
   }
 }
