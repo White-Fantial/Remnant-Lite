@@ -2,6 +2,143 @@
 
 import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT } from './constants.js';
 
+// ---------------------------------------------------------------------------
+// Menu screen
+// ---------------------------------------------------------------------------
+
+/**
+ * Draw the main menu / title screen.
+ * Renders animated ghost silhouettes drifting in the background so the player
+ * gets a visual hint of the echo mechanic before pressing Start.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ */
+export function drawMenuScreen(ctx) {
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  // Subtle grid lines
+  ctx.strokeStyle = 'rgba(100,120,200,0.07)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < CANVAS_WIDTH; x += 40) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, CANVAS_HEIGHT);
+    ctx.stroke();
+  }
+  for (let y = 0; y < CANVAS_HEIGHT; y += 40) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(CANVAS_WIDTH, y);
+    ctx.stroke();
+  }
+
+  // Animated ghost silhouettes drifting left-right in the background.
+  // The 80 px overflow margin lets ghosts fully exit one edge before wrapping
+  // back from the other side, avoiding a jarring instant jump.
+  const GHOST_OVERFLOW_MARGIN = 80;
+  const t = Date.now() / 1000;
+  for (let i = 0; i < 5; i++) {
+    const dir   = i % 2 === 0 ? 1 : -1;
+    const speed = 28 + i * 8;
+    const xRaw  = (i * 170 + t * speed * dir) % (CANVAS_WIDTH + GHOST_OVERFLOW_MARGIN);
+    const x     = xRaw < 0 ? xRaw + CANVAS_WIDTH + GHOST_OVERFLOW_MARGIN : xRaw;
+    const y     = 170 + i * 50 + Math.sin(t * 0.7 + i * 1.3) * 18;
+
+    ctx.globalAlpha = 0.05 + 0.03 * Math.sin(t * 1.1 + i);
+    ctx.fillStyle   = '#78a0e8';
+    ctx.fillRect(x - 40, y, PLAYER_WIDTH, PLAYER_HEIGHT);
+    ctx.globalAlpha = 1;
+  }
+
+  // Title
+  ctx.fillStyle = '#e94560';
+  ctx.font      = 'bold 52px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Remnant Lite', CANVAS_WIDTH / 2, 140);
+
+  // Tagline
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font      = '16px monospace';
+  ctx.fillText('Use your past self to solve puzzles.', CANVAS_WIDTH / 2, 176);
+
+  // Divider
+  ctx.strokeStyle = 'rgba(100,220,255,0.2)';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(CANVAS_WIDTH / 2 - 160, 198);
+  ctx.lineTo(CANVAS_WIDTH / 2 + 160, 198);
+  ctx.stroke();
+
+  // Controls hint
+  ctx.fillStyle = 'rgba(168,200,255,0.65)';
+  ctx.font      = '13px monospace';
+  ctx.fillText('Move: ← → / A D      Jump: ↑ / W / Space', CANVAS_WIDTH / 2, 228);
+  ctx.fillText('R — Leave Echo     T — Restart     N — Next level', CANVAS_WIDTH / 2, 248);
+
+  // "Press Enter" prompt — pulsing
+  const pulse = 0.55 + 0.45 * Math.sin(t * 2.5);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle   = '#64dcff';
+  ctx.font        = 'bold 19px monospace';
+  ctx.fillText('Press ENTER to Start', CANVAS_WIDTH / 2, 330);
+  ctx.globalAlpha = 1;
+
+  // Footer
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.font      = '11px monospace';
+  ctx.fillText('Phase 10 Demo', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 16);
+}
+
+// ---------------------------------------------------------------------------
+// Game complete screen
+// ---------------------------------------------------------------------------
+
+/**
+ * Draw the end-of-demo screen shown after the last tutorial level is cleared.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ */
+export function drawGameCompleteScreen(ctx) {
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+  // Gold accent panel
+  ctx.fillStyle = 'rgba(255,215,0,0.08)';
+  ctx.fillRect(0, CANVAS_HEIGHT / 2 - 110, CANVAS_WIDTH, 220);
+
+  ctx.strokeStyle = 'rgba(255,215,0,0.18)';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(60, CANVAS_HEIGHT / 2 - 110, CANVAS_WIDTH - 120, 220);
+
+  // Title
+  ctx.fillStyle = '#ffd700';
+  ctx.font      = 'bold 38px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('Tutorial Complete', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 44);
+
+  // Summary
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.font      = '16px monospace';
+  ctx.fillText('You used your past self to solve puzzles.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 4);
+
+  // Prototype note
+  ctx.fillStyle = 'rgba(168,200,255,0.55)';
+  ctx.font      = '13px monospace';
+  ctx.fillText('This is a prototype of Remnant.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 24);
+
+  // Restart prompt — pulsing
+  const t     = Date.now() / 1000;
+  const pulse = 0.55 + 0.45 * Math.sin(t * 2.5);
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle   = '#64dcff';
+  ctx.font        = 'bold 16px monospace';
+  ctx.fillText('Press ENTER or R to Play Again', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 84);
+  ctx.globalAlpha = 1;
+}
+
 /**
  * Clear the canvas and fill the background.
  * @param {CanvasRenderingContext2D} ctx
