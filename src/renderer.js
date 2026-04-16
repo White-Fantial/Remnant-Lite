@@ -130,13 +130,14 @@ export function drawPlayer(ctx, position, isGrounded) {
 }
 
 /**
- * Draw the HUD overlay: level name, goal state, and an optional contextual hint.
+ * Draw the HUD overlay: level name, goal state, recording stats, and hints.
  * @param {CanvasRenderingContext2D} ctx
  * @param {string} levelName
  * @param {boolean} goalReached
  * @param {string} [hint]
+ * @param {{ snapshotCount: number, bufferedSeconds: number, captureLabel: string }} [recording]
  */
-export function drawHUD(ctx, levelName, goalReached, hint) {
+export function drawHUD(ctx, levelName, goalReached, hint, recording) {
   ctx.textAlign = 'left';
   ctx.font = '13px monospace';
 
@@ -146,11 +147,28 @@ export function drawHUD(ctx, levelName, goalReached, hint) {
     ctx.fillText(levelName, 12, 20);
   }
 
+  // Recording stats — top-left below level name
+  if (recording) {
+    const bufferedSecondsText = recording.bufferedSeconds.toFixed(2);
+    ctx.fillStyle = 'rgba(100,220,255,0.7)';
+    ctx.fillText(`Recording: ${recording.snapshotCount} samples`, 12, 40);
+    ctx.fillText(`Buffered:  ${bufferedSecondsText}s`, 12, 57);
+
+    if (recording.captureLabel) {
+      ctx.fillStyle = 'rgba(245,197,24,0.9)';
+      ctx.fillText(recording.captureLabel, 12, 74);
+    }
+  }
+
   // Hint — bottom of screen (level-specific, only shown when provided)
   if (hint) {
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillText(hint, 12, CANVAS_HEIGHT - 14);
+    ctx.fillText(hint, 12, CANVAS_HEIGHT - 30);
   }
+
+  // Remnant capture hint — bottom of screen
+  ctx.fillStyle = 'rgba(100,220,255,0.45)';
+  ctx.fillText('Press R to capture a Remnant timeline', 12, CANVAS_HEIGHT - 14);
 
   // Goal reached banner
   if (goalReached) {

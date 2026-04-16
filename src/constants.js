@@ -9,3 +9,7 @@ export const JUMP_VELOCITY = -620; // pixels per second (upward)
 
 export const PLAYER_WIDTH = 32;
 export const PLAYER_HEIGHT = 48;
+
+// Recorder
+export const RECORDER_INTERVAL_MS = 50;      // sample every 50 ms
+export const RECORDER_BUFFER_SECONDS = 5;    // keep last 5 seconds of history
