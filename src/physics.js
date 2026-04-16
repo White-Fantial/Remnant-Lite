@@ -9,7 +9,7 @@ import { GRAVITY } from './constants.js';
  * @param {number} ax @param {number} ay @param {number} aw @param {number} ah
  * @param {number} bx @param {number} by @param {number} bw @param {number} bh
  */
-function aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+export function aabbOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
