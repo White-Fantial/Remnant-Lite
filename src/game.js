@@ -10,6 +10,8 @@ import {
   drawRemnants,
   drawHUD,
   drawUIMessage,
+  drawMenuScreen,
+  drawGameCompleteScreen,
 } from './renderer.js';
 import {
   CANVAS_WIDTH,
@@ -50,11 +52,15 @@ let _initialLoad = true;
 /**
  * Structured game state.
  *
+ * mode — top-level game mode: 'menu' | 'playing' | 'gameComplete'
  * entities.remnants — ordered array of active Remnants (creation order).
  * rules.maxRemnants — how many Remnants can exist at once; oldest is evicted
  *                     when the limit is exceeded.
  */
 const state = {
+  /** Top-level mode controlling which screen is shown. */
+  mode: 'menu',
+
   currentLevelIndex: 0,
   levelComplete:     false,
 
@@ -515,45 +521,85 @@ function updatePlayer(dt) {
 // ---------------------------------------------------------------------------
 
 /**
- * Initialise the game.
+ * Initialise the game — show the main menu.
+ * The first level is only loaded when the player explicitly starts the game.
+ *
+ * Note: `state` is declared with `mode: 'menu'` and correct defaults at module
+ * level, so this one-time call on page load requires no further reset.
+ *
  * @param {CanvasRenderingContext2D} context
  */
 export function init(context) {
   ctx = context;
+  // state.mode is already 'menu' from its declaration; set explicitly for clarity.
+  state.mode = 'menu';
+}
+
+/**
+ * Start (or restart) the game from level 1.
+ * Resets all state so it feels like a fresh run.
+ */
+function startGame() {
+  state.mode    = 'playing';
+  _initialLoad  = true; // treat first loadLevel as a brand-new session
   loadLevel(0);
 }
 
 /**
  * Update all game logic for one frame.
  *
- * Order:
- *  1. Debug toggle (always handled, even during fail)
- *  2. T — instant restart (always handled)
- *  3. Level navigation (N / P) when not failed
- *  4. Fail state tick + UI messages (if failed, skip gameplay)
- *  5. Player movement
- *  6. Recorder tick + Remnant commit (R key)
- *  7. Advance all Remnant replays
- *  8. Gather activators
- *  9. Update buttons
- * 10. Update doors
- * 11. Update goal / level completion
- * 12. Check fail condition (out of bounds)
- * 13. Update UI messages
- * 14. Accumulate elapsed time metric
- * 15. Clear one-shot input flags
+ * Input is routed by top-level mode first:
+ *
+ *  Menu       — Enter / Space → start game
+ *  GameComplete — Enter / R → restart from level 1
+ *  Playing    — full gameplay update (see order below):
+ *    1.  Debug toggle (F1 / backtick)
+ *    2.  T — instant restart
+ *    3.  Level navigation (N / P) when level is complete
+ *    4.  Fail state tick + UI messages
+ *    5.  Player movement
+ *    6.  Recorder tick + Remnant commit (R key)
+ *    7.  Advance all Remnant replays
+ *    8.  Gather activators
+ *    9.  Update buttons
+ *   10.  Update doors
+ *   11.  Update goal / level completion
+ *   12.  Check fail condition (out of bounds)
+ *   13.  Update UI messages
+ *   14.  Accumulate elapsed time metric
+ *   15.  Clear one-shot input flags
  *
  * @param {number} dt - Delta time in seconds.
  */
 export function update(dt) {
-  // 1. Debug overlay toggle — F1 or backtick, works in all states
+  // ── Menu mode ─────────────────────────────────────────────────────────────
+  if (state.mode === 'menu') {
+    if (wasKeyJustPressed('Enter') || wasKeyJustPressed('Space')) {
+      startGame();
+    }
+    clearJustPressed();
+    return;
+  }
+
+  // ── Game-complete mode ────────────────────────────────────────────────────
+  if (state.mode === 'gameComplete') {
+    if (wasKeyJustPressed('Enter') || wasKeyJustPressed('KeyR')) {
+      startGame();
+    }
+    clearJustPressed();
+    return;
+  }
+
+  // ── Playing mode ──────────────────────────────────────────────────────────
+
+  // 1. Debug overlay toggle — F1 or backtick, works in all playing states
   if (wasKeyJustPressed('F1') || wasKeyJustPressed('Backquote')) {
     state.debug.enabled = !state.debug.enabled;
     clearJustPressed();
     return;
   }
 
-  // 2. T — instant restart, works in all states
+  // 2. T — instant restart, works in all playing states
   if (wasKeyJustPressed('KeyT')) {
     restartCurrentLevel();
     clearJustPressed();
@@ -563,8 +609,12 @@ export function update(dt) {
   // 3. Level navigation — only when not in fail state
   if (state.runState !== 'failed') {
     if (wasKeyJustPressed('KeyN') && state.levelComplete) {
-      if (state.currentLevelIndex + 1 < levels.length) {
+      const nextIndex = state.currentLevelIndex + 1;
+      if (nextIndex < levels.length) {
         goToNextLevel();
+      } else {
+        // Last level cleared — transition to the game-complete screen
+        state.mode = 'gameComplete';
       }
       clearJustPressed();
       return;
@@ -613,26 +663,47 @@ export function update(dt) {
 
 /**
  * Render the current frame.
+ * Rendering is layered by top-level mode:
+ *  1. Menu         → title screen only
+ *  2. GameComplete → end screen only
+ *  3. Playing      → background → world → HUD → overlays
  */
 export function render() {
-  const { recorder }     = state.remnant;
-  const snapshotCount    = recorder ? getSnapshotCount(recorder) : 0;
-  const { remnants }     = state.entities;
-  const isLastLevel      = state.currentLevelIndex === levels.length - 1;
+  // ── Menu screen ───────────────────────────────────────────────────────────
+  if (state.mode === 'menu') {
+    drawMenuScreen(ctx);
+    return;
+  }
+
+  // ── Game-complete screen ──────────────────────────────────────────────────
+  if (state.mode === 'gameComplete') {
+    drawGameCompleteScreen(ctx);
+    return;
+  }
+
+  // ── Gameplay layers ───────────────────────────────────────────────────────
+
+  const { recorder }      = state.remnant;
+  const snapshotCount     = recorder ? getSnapshotCount(recorder) : 0;
+  const { remnants }      = state.entities;
+  const isLastLevel       = state.currentLevelIndex === levels.length - 1;
   const blockingColliders = getBlockingColliders();
 
+  // Layer 1 — background
   clearScreen(ctx);
 
-  // In debug mode, draw ghost trails beneath everything else
+  // Debug ghost trails beneath world
   if (state.debug.enabled) {
     drawGhostTrail(ctx, recorder ? recorder._buffer : null, remnants);
   }
 
+  // Layer 2 — world (platforms, interactables, Remnants, player)
   drawPlatforms(ctx, state.level.platforms);
   drawInteractables(ctx, state.interactables, remnants);
   drawRemnants(ctx, remnants);
   drawPlayer(ctx, state.player.position, state.player.isGrounded);
 
+  // Layer 3 — HUD
   drawHUD(ctx, {
     levelName:     state.level.name,
     levelIndex:    state.currentLevelIndex,
@@ -650,10 +721,9 @@ export function render() {
     interactables: state.interactables,
   });
 
-  // Centred timed message overlay
+  // Layer 4 — overlays (timed messages, debug panel)
   drawUIMessage(ctx, state.ui.message, state.ui.messageTimer, state.ui.messageFull);
 
-  // Debug overlay (top-right panel + playback trails)
   if (state.debug.enabled) {
     const pressedButtons = state.interactables
       .filter(e => e.type === 'button' && e.isPressed)
@@ -670,5 +740,3 @@ export function render() {
     });
   }
 }
-
-
