@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
   <title>Remnant Lite</title>
   <style>
     *, *::before, *::after {
@@ -11,13 +11,18 @@
       padding: 0;
     }
 
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      touch-action: none; /* prevent browser pan/zoom on game area */
+    }
+
     body {
       background: #0f0f1a;
       display: flex;
       justify-content: center;
       align-items: center;
       min-height: 100vh;
-      overflow: hidden;
     }
 
     canvas {
@@ -26,6 +31,142 @@
       /* Scale canvas to fit viewport while keeping aspect ratio */
       max-width: 100vw;
       max-height: 100vh;
+      touch-action: none;
+    }
+
+    /* ── Mobile controls overlay ──────────────────────────────────────────── */
+
+    #mobile-controls {
+      display: none; /* hidden until mc-active is added by mobile-ui.js */
+      position: fixed;
+      inset: 0;
+      pointer-events: none; /* the overlay itself passes clicks through */
+      z-index: 20;
+    }
+
+    #mobile-controls.mc-active {
+      display: block;
+    }
+
+    /* Common button styles */
+    .mc-btn {
+      pointer-events: all;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      background: rgba(0, 0, 0, 0.55);
+      border: 2px solid rgba(100, 220, 255, 0.45);
+      border-radius: 10px;
+      color: rgba(200, 240, 255, 0.9);
+      font-family: monospace;
+      font-size: 15px;
+      font-weight: bold;
+      cursor: pointer;
+      outline: none;
+      transition: background 0.08s, border-color 0.08s;
+    }
+
+    .mc-btn.mc-pressed,
+    .mc-btn:active {
+      background: rgba(100, 220, 255, 0.22);
+      border-color: rgba(100, 220, 255, 0.9);
+    }
+
+    /* Utility class — hides any element */
+    .mc-hidden {
+      display: none !important;
+    }
+
+    /* ── Mode panels ──────────────────────────────────────────────────────── */
+
+    .mc-mode-panel {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      pointer-events: none; /* children opt-in via pointer-events: all */
+    }
+
+    /* Big centred buttons for menu / game-complete screens */
+    .mc-big-action {
+      pointer-events: all;
+      padding: 18px 40px;
+      font-size: 22px;
+      border-radius: 14px;
+      border-width: 2px;
+      letter-spacing: 0.05em;
+    }
+
+    /* ── Gameplay controls ────────────────────────────────────────────────── */
+
+    /* Left cluster: move left + move right — bottom-left */
+    .mc-left-cluster {
+      position: fixed;
+      left: 12px;
+      bottom: 24px;
+      display: flex;
+      gap: 10px;
+      pointer-events: none;
+    }
+
+    .mc-move {
+      pointer-events: all;
+      width: 72px;
+      height: 72px;
+      font-size: 26px;
+    }
+
+    /* Right cluster: jump + echo — bottom-right */
+    .mc-right-cluster {
+      position: fixed;
+      right: 12px;
+      bottom: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: stretch;
+      pointer-events: none;
+    }
+
+    .mc-action-btn {
+      pointer-events: all;
+      width: 82px;
+      height: 54px;
+    }
+
+    /* Top utility cluster — top-right corner */
+    .mc-top-cluster {
+      position: fixed;
+      top: 8px;
+      right: 8px;
+      display: flex;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .mc-small-btn {
+      pointer-events: all;
+      height: 34px;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+
+    /* ── Responsive adjustments ───────────────────────────────────────────── */
+
+    /* Small-height landscape phones */
+    @media (max-height: 420px) {
+      .mc-move        { width: 58px; height: 58px; font-size: 22px; }
+      .mc-action-btn  { width: 68px; height: 46px; font-size: 13px; }
+      .mc-left-cluster,
+      .mc-right-cluster { bottom: 10px; }
+    }
+
+    /* Very narrow portrait phones */
+    @media (max-width: 360px) {
+      .mc-move        { width: 58px; height: 58px; }
+      .mc-action-btn  { width: 66px; height: 46px; }
     }
 
     /* ── Feedback overlay ─────────────────────────────────────────────────── */
@@ -161,6 +302,46 @@
 <body>
   <canvas id="gameCanvas"></canvas>
 
+  <!-- ── Mobile controls overlay ──────────────────────────────────────────── -->
+  <!--
+    Shown only on touch-capable devices (or ?mobile in URL for testing).
+    Mode panels are toggled by mobile-ui.js via remnant:modeChange events.
+  -->
+  <div id="mobile-controls" aria-hidden="true">
+
+    <!-- Menu mode: tap-to-start -->
+    <div id="mc-menu-overlay" class="mc-mode-panel">
+      <button id="mc-start-btn" class="mc-btn mc-big-action">TAP TO START</button>
+    </div>
+
+    <!-- Game-complete mode: play again -->
+    <div id="mc-gamecomplete-overlay" class="mc-mode-panel mc-hidden">
+      <button id="mc-playagain-btn" class="mc-btn mc-big-action">PLAY AGAIN</button>
+    </div>
+
+    <!-- Playing mode: gameplay controls -->
+    <div id="mc-gameplay" class="mc-mode-panel mc-hidden">
+      <!-- Movement — bottom left -->
+      <div class="mc-left-cluster">
+        <button id="mc-left-btn"  class="mc-btn mc-move" aria-label="Move left">◀</button>
+        <button id="mc-right-btn" class="mc-btn mc-move" aria-label="Move right">▶</button>
+      </div>
+
+      <!-- Actions — bottom right -->
+      <div class="mc-right-cluster">
+        <button id="mc-jump-btn"    class="mc-btn mc-action-btn" aria-label="Jump">Jump</button>
+        <button id="mc-remnant-btn" class="mc-btn mc-action-btn" aria-label="Leave Echo">Echo</button>
+      </div>
+
+      <!-- Utility — top right -->
+      <div class="mc-top-cluster">
+        <button id="mc-restart-btn"   class="mc-btn mc-small-btn" aria-label="Restart level">↺ Restart</button>
+        <button id="mc-nextlevel-btn" class="mc-btn mc-small-btn mc-hidden" aria-label="Next level">Next ▶</button>
+      </div>
+    </div>
+
+  </div>
+
   <!-- ── Feedback overlay (shown after tutorial complete) ──────────────── -->
   <div id="feedback-overlay" role="dialog" aria-modal="true" aria-label="Playtest feedback">
     <div id="feedback-panel">
@@ -208,5 +389,9 @@
 
   <script type="module" src="src/main.js"></script>
   <script type="module" src="src/feedback-ui.js"></script>
+  <script type="module">
+    import { initMobileUI } from './src/systems/mobile-ui.js';
+    initMobileUI();
+  </script>
 </body>
 </html>
