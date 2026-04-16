@@ -365,24 +365,25 @@ export function init(context) {
  */
 export function update(dt) {
   // --- Level control inputs (handled first so restart is always responsive) ---
+  // These bypass the normal game update so no stale state leaks.
+
+  let levelControlUsed = false;
 
   if (wasKeyJustPressed('KeyT')) {
     restartCurrentLevel();
-    clearJustPressed();
-    return;
-  }
-
-  if (wasKeyJustPressed('KeyN') && state.levelComplete) {
+    levelControlUsed = true;
+  } else if (wasKeyJustPressed('KeyN') && state.levelComplete) {
     if (state.currentLevelIndex + 1 < levels.length) {
       goToNextLevel();
     }
-    clearJustPressed();
-    return;
+    levelControlUsed = true;
+  } else if (wasKeyJustPressed('KeyP')) {
+    // P = previous level (quick testing convenience)
+    loadLevel(Math.max(0, state.currentLevelIndex - 1));
+    levelControlUsed = true;
   }
 
-  // P = previous level (quick testing convenience)
-  if (wasKeyJustPressed('KeyP')) {
-    loadLevel(Math.max(0, state.currentLevelIndex - 1));
+  if (levelControlUsed) {
     clearJustPressed();
     return;
   }

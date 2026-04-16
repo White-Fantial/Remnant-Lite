@@ -38,8 +38,7 @@ export function drawPlatforms(ctx, platforms) {
 export function drawInteractables(ctx, interactables, remnants) {
   // Draw a faint debug line from each pressed button to its linked door
   // so the player can understand the puzzle at a glance.
-  const hasRemnants = Array.isArray(remnants) && remnants.length > 0;
-  if (hasRemnants) {
+  if (remnants?.length > 0) {
     for (const button of interactables) {
       if (button.type !== 'button' || !button.isPressed || !button.targets) continue;
       const isRemnantPressing =
