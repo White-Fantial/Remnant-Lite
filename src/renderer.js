@@ -236,6 +236,8 @@ export function drawRemnant(ctx, remnant) {
 
   } else if (isPreSolid) {
     // --- Warning phase: animated pulse in the 0.5 s window before solid ---
+    // Date.now() drives the pulse so no timestamp plumbing is needed for
+    // this purely cosmetic effect.  Frame-rate variation is not noticeable.
     const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.014);
 
     ctx.globalAlpha = 0.38 + pulse * 0.18;
@@ -337,7 +339,7 @@ export function drawHUD(ctx, levelName, goalReached, hint, recording) {
       const duration = (r.duration     / 1000).toFixed(2);
       const solidAt  = (r.solidPhaseStartTime / 1000).toFixed(2);
       ctx.fillStyle = 'rgba(168,200,255,0.6)';
-      ctx.fillText(`Replay: ${current} / ${duration}s`, 12, 108);
+      ctx.fillText(`Replay: ${current}s / ${duration}s`, 12, 108);
       ctx.fillStyle = 'rgba(144,200,255,0.5)';
       ctx.fillText(`Solid starts: ${solidAt}s`, 12, 125);
     }
