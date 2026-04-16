@@ -194,9 +194,13 @@ export function drawPlayer(ctx, position, isGrounded) {
 }
 
 /**
- * Draw the active Remnant ghost.
- * Rendered as a semi-transparent rectangle with a colored outline so it is
- * clearly distinct from the solid player.
+ * Draw the active Remnant ghost with clear visual states:
+ *
+ *  1. Normal (non-solid replay):  translucent blue fill, thin outline.
+ *  2. Warning (approaching solid): brighter, animated pulsing outline.
+ *  3. Solid phase:                 strong opacity, thick bright outline,
+ *                                  warm-cyan fill, "SOLID" label.
+ *  4. Finished + non-solid:        very faint — Remnant ended before solid phase.
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {object | null} remnant - Active Remnant entity, or null.
@@ -204,18 +208,69 @@ export function drawPlayer(ctx, position, isGrounded) {
 export function drawRemnant(ctx, remnant) {
   if (!remnant) return;
 
-  const alpha = remnant.isFinished ? 0.25 : 0.5;
+  const { isSolidToPlayer, isFinished, solidPhaseStartTime, currentTime } = remnant;
 
-  // Translucent ghost fill
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#78a0e8';
-  ctx.fillRect(remnant.x, remnant.y, remnant.width, remnant.height);
+  // Time remaining until solid phase begins (negative when already in solid phase).
+  const timeUntilSolid = solidPhaseStartTime - currentTime;
 
-  // Bright outline
-  ctx.globalAlpha = remnant.isFinished ? 0.35 : 0.75;
-  ctx.strokeStyle = '#a8c8ff';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(remnant.x, remnant.y, remnant.width, remnant.height);
+  // Show a warning tint in the 500 ms window just before the solid phase starts.
+  const isPreSolid = !isSolidToPlayer && !isFinished && timeUntilSolid <= 500;
+
+  if (isSolidToPlayer) {
+    // --- Solid phase: strong, bright, clearly a real object ---
+    ctx.globalAlpha = isFinished ? 0.8 : 0.85;
+    ctx.fillStyle = '#90c8ff';
+    ctx.fillRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+    ctx.globalAlpha = isFinished ? 0.9 : 1.0;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+    // "SOLID" label above so the mechanic is unmistakable during testing
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('SOLID', remnant.x + remnant.width / 2, remnant.y - 4);
+
+  } else if (isPreSolid) {
+    // --- Warning phase: animated pulse in the 0.5 s window before solid ---
+    // Date.now() drives the pulse so no timestamp plumbing is needed for
+    // this purely cosmetic effect.  Frame-rate variation is not noticeable.
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() * 0.014);
+
+    ctx.globalAlpha = 0.38 + pulse * 0.18;
+    ctx.fillStyle = '#b0d4ff';
+    ctx.fillRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+    ctx.globalAlpha = 0.65 + pulse * 0.35;
+    ctx.strokeStyle = '#d8f0ff';
+    ctx.lineWidth = 1.5 + pulse;
+    ctx.strokeRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+  } else if (isFinished) {
+    // --- Finished but not solid: faint ghost, replay ended before solid phase ---
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = '#78a0e8';
+    ctx.fillRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = '#a8c8ff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+  } else {
+    // --- Normal non-solid replay: translucent blue, thin outline ---
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#78a0e8';
+    ctx.fillRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+    ctx.globalAlpha = 0.65;
+    ctx.strokeStyle = '#a8c8ff';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(remnant.x, remnant.y, remnant.width, remnant.height);
+  }
 
   // Restore full opacity for subsequent draw calls
   ctx.globalAlpha = 1;
@@ -269,12 +324,24 @@ export function drawHUD(ctx, levelName, goalReached, hint, recording) {
     ctx.fillStyle = 'rgba(168,200,255,0.8)';
     ctx.fillText(`Remnant: ${remnantStatus}`, 12, 74);
 
+    // Solid-phase status — shown whenever a Remnant exists
+    if (r) {
+      const solidLabel = r.isSolidToPlayer ? 'ON' : 'OFF';
+      ctx.fillStyle = r.isSolidToPlayer
+        ? 'rgba(144,200,255,1.0)'   // bright when solid
+        : 'rgba(168,200,255,0.5)';  // dim when not yet solid
+      ctx.fillText(`Solid Phase: ${solidLabel}`, 12, 91);
+    }
+
     // Remnant time — shown while actively replaying
     if (r && !r.isFinished) {
       const current  = (r.currentTime  / 1000).toFixed(2);
       const duration = (r.duration     / 1000).toFixed(2);
+      const solidAt  = (r.solidPhaseStartTime / 1000).toFixed(2);
       ctx.fillStyle = 'rgba(168,200,255,0.6)';
-      ctx.fillText(`Remnant Time: ${current} / ${duration}`, 12, 91);
+      ctx.fillText(`Replay: ${current}s / ${duration}s`, 12, 108);
+      ctx.fillStyle = 'rgba(144,200,255,0.5)';
+      ctx.fillText(`Solid starts: ${solidAt}s`, 12, 125);
     }
 
     // Button state — shown when interactables are available
@@ -300,7 +367,7 @@ export function drawHUD(ctx, levelName, goalReached, hint, recording) {
           buttonLabel = 'Player';
         }
         ctx.fillStyle = 'rgba(255,220,100,0.75)';
-        ctx.fillText(`Button: ${buttonLabel}`, 12, 108);
+        ctx.fillText(`Button: ${buttonLabel}`, 12, 142);
       }
     }
   }

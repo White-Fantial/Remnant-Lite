@@ -15,7 +15,7 @@
  *   width:             number,
  *   height:            number,
  *   canActivateButtons: boolean,
- *   isSolidToPlayer:   boolean,         // unused this phase; kept for Phase 7
+ *   isSolidToPlayer:   boolean,         // read by Phase 7 collision pipeline
  * }
  */
 
