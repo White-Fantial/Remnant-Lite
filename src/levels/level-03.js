@@ -61,6 +61,9 @@ export const level03 = {
 
   playerSpawn: { x: 80, y: 372 },
 
+  bounds: { left: 0, right: 800, top: 0, bottom: 450 },
+  deathY: 540,
+
   platforms: [
     // Ground floor — full width
     { x: 0,   y: 420, width: 800, height: 30, type: 'platform' },

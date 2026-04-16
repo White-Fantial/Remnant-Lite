@@ -13,3 +13,11 @@ export const PLAYER_HEIGHT = 48;
 // Recorder
 export const RECORDER_INTERVAL_MS = 50;      // sample every 50 ms
 export const RECORDER_BUFFER_SECONDS = 5;    // keep last 5 seconds of history
+
+// Game feel
+export const COYOTE_TIME      = 0.10;  // seconds of grace period after leaving a ledge
+export const JUMP_BUFFER_TIME = 0.12;  // seconds a jump input is remembered before landing
+
+// Fail / death
+export const FAIL_DELAY       = 1.5;   // seconds before auto-restart after failure
+export const DEATH_Y_DEFAULT  = 580;   // fallback Y threshold for out-of-bounds death
