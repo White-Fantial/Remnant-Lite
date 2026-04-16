@@ -206,13 +206,12 @@ renderer.js (render)
 
 | Limitation | Notes |
 |---|---|
-| No physics for Remnants | Remnants replay recorded positions; they do not simulate physics independently. This means a Remnant's recorded path can be invalidated if the level state changes (e.g. a door closes mid-replay). |
+| Physics is not simulated for Remnants | Remnants replay recorded positions; they do not simulate physics independently. This means a Remnant's recorded path can be invalidated if the level state changes (e.g. a door closes mid-replay). |
 | Single-canvas 2D renderer | No sprite sheets, no particle system, no layered rendering. Visual quality is prototype-level. |
 | No save system | All state is in-memory. Refreshing the page resets everything. |
 | No level editor | Levels are hardcoded JS objects. Adding or editing levels requires code changes. |
 | Audio is minimal | The Web Audio hooks are wired but no designed sound assets exist. |
 | No mobile / gamepad support | Input is keyboard-only. |
-| Console.log left in recorder commit path | Development-era logging in `updateRemnantRecorder` should be removed before any public release. |
 | `file://` origin limitation | ES module imports require HTTP. Players must use a local server or hosted URL. |
 
 ---
