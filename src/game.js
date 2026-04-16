@@ -555,10 +555,9 @@ function updateRemnantRecorder(nowMs) {
 
       // Evict oldest Remnant when at limit (FIFO replacement)
       if (state.entities.remnants.length >= state.rules.maxRemnants) {
-        const evicted = state.entities.remnants.shift();
-        console.log(`Remnant evicted: ${evicted.id}`);
+        state.entities.remnants.shift();
         Sounds.REMNANT_REMOVED();
-        showMessage('Oldest Echo Removed', 1.2);
+        showMessage('Oldest Remnant Removed', 1.2);
       }
 
       state.entities.remnants.push(newRemnant);
@@ -596,15 +595,6 @@ function updateRemnantRecorder(nowMs) {
       state.remnant.recorder = createRecorder();
 
       Sounds.REMNANT_COMMIT();
-
-      console.log(
-        `Remnant spawned: ${newRemnant.id}, ` +
-        `${timeline.length} samples, ` +
-        `duration ${(newRemnant.duration / 1000).toFixed(2)}s — ` +
-        `active: ${state.entities.remnants.length}/${state.rules.maxRemnants}`,
-      );
-    } else {
-      console.log(`Timeline too short to spawn a Remnant (${timeline.length} samples)`);
     }
   }
 }
