@@ -1,6 +1,12 @@
 // Game core — world state, update logic, render dispatch
 
-import { isKeyDown, wasKeyJustPressed, clearJustPressed } from './input.js';
+import {
+  isActionDown,
+  wasActionJustPressed,
+  isKeyDown,
+  wasKeyJustPressed,
+  clearJustPressed,
+} from './input.js';
 import { resolveMovement, aabbOverlap } from './physics.js';
 import {
   clearScreen,
@@ -281,6 +287,9 @@ function restartCurrentLevel() {
   Sounds.RESTART();
   loadLevel(state.currentLevelIndex);
   showMessage('Level Restarted', 1.2);
+  window.dispatchEvent(new CustomEvent('remnant:modeChange', {
+    detail: { mode: 'playing', levelComplete: false },
+  }));
 }
 
 /**
@@ -291,6 +300,9 @@ function goToNextLevel() {
   const nextIndex = state.currentLevelIndex + 1;
   if (nextIndex < levels.length) {
     loadLevel(nextIndex);
+    window.dispatchEvent(new CustomEvent('remnant:modeChange', {
+      detail: { mode: 'playing', levelComplete: false },
+    }));
   }
 }
 
@@ -523,6 +535,10 @@ function updateGoal(player) {
         isLastLevel ? 'Tutorial Complete!' : 'Level Complete!',
         3.5,
       );
+
+      window.dispatchEvent(new CustomEvent('remnant:modeChange', {
+        detail: { mode: 'playing', levelComplete: true },
+      }));
     }
   }
 }
@@ -546,7 +562,7 @@ function updateRemnantRecorder(nowMs) {
 
   tickRecorder(recorder, state.player, nowMs);
 
-  if (wasKeyJustPressed('KeyR')) {
+  if (wasActionJustPressed('remnant')) {
     const timeline = getCurrentRecording(recorder);
     state.remnant.latestTimeline = timeline;
 
@@ -618,11 +634,11 @@ function updatePlayer(dt) {
 
   // --- Horizontal input ---
   player.velocity.x = 0;
-  if (isKeyDown('ArrowLeft') || isKeyDown('KeyA'))  player.velocity.x = -PLAYER_SPEED;
-  if (isKeyDown('ArrowRight') || isKeyDown('KeyD')) player.velocity.x =  PLAYER_SPEED;
+  if (isActionDown('moveLeft'))  player.velocity.x = -PLAYER_SPEED;
+  if (isActionDown('moveRight')) player.velocity.x =  PLAYER_SPEED;
 
-  // --- Jump buffer: fill on rising edge of jump key ---
-  const jumpKey = isKeyDown('ArrowUp') || isKeyDown('KeyW') || isKeyDown('Space');
+  // --- Jump buffer: fill on rising edge of jump action ---
+  const jumpKey = isActionDown('jump');
   if (jumpKey && !player._prevJumpKey) {
     player.jumpBuffer = JUMP_BUFFER_TIME;
   }
@@ -683,6 +699,9 @@ export function init(context) {
   ctx = context;
   // state.mode is already 'menu' from its declaration; set explicitly for clarity.
   state.mode = 'menu';
+  window.dispatchEvent(new CustomEvent('remnant:modeChange', {
+    detail: { mode: 'menu' },
+  }));
 }
 
 /**
@@ -707,6 +726,9 @@ function startGame() {
 
   loadLevel(0);
   logEvent('session_start');
+  window.dispatchEvent(new CustomEvent('remnant:modeChange', {
+    detail: { mode: 'playing', levelComplete: false },
+  }));
 }
 
 /**
@@ -741,7 +763,7 @@ function startGame() {
 export function update(dt) {
   // ── Menu mode ─────────────────────────────────────────────────────────────
   if (state.mode === 'menu') {
-    if (wasKeyJustPressed('Enter') || wasKeyJustPressed('Space')) {
+    if (wasActionJustPressed('start')) {
       startGame();
     }
     clearJustPressed();
@@ -750,7 +772,7 @@ export function update(dt) {
 
   // ── Game-complete mode ────────────────────────────────────────────────────
   if (state.mode === 'gameComplete') {
-    if (wasKeyJustPressed('Enter') || wasKeyJustPressed('KeyR')) {
+    if (wasActionJustPressed('start') || wasKeyJustPressed('KeyR')) {
       startGame();
     }
     clearJustPressed();
@@ -793,7 +815,7 @@ export function update(dt) {
   const effectiveDt = state.playtest.observationMode ? dt * OBSERVATION_TIME_SCALE : dt;
 
   // 3. T — instant restart, works in all playing states
-  if (wasKeyJustPressed('KeyT')) {
+  if (wasActionJustPressed('restart')) {
     restartCurrentLevel();
     clearJustPressed();
     return;
@@ -801,7 +823,7 @@ export function update(dt) {
 
   // 4. Level navigation — only when not in fail state
   if (state.runState !== 'failed') {
-    if (wasKeyJustPressed('KeyN') && state.levelComplete) {
+    if (wasActionJustPressed('nextLevel') && state.levelComplete) {
       const nextIndex = state.currentLevelIndex + 1;
       if (nextIndex < levels.length) {
         goToNextLevel();
@@ -936,6 +958,7 @@ export function render() {
     interactables:    state.interactables,
     observationMode:  state.playtest.observationMode,
     playtestEnabled:  state.playtest.enabled,
+    debugEnabled:     state.debug.enabled,
   });
 
   // Layer 4 — overlays (timed messages, debug panel)

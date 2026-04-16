@@ -55,6 +55,29 @@ See [`docs/post-prototype-evaluation.md`](docs/post-prototype-evaluation.md) and
 
 ---
 
+## Mobile Controls
+
+Remnant Lite is playable on mobile browsers via on-screen touch controls.
+
+**Recommended orientation:** landscape.
+
+On-screen controls appear automatically on touch-capable devices.  Desktop keyboard controls still work alongside them.
+
+| Button | Action |
+|--------|--------|
+| ◀ (hold) | Move left |
+| ▶ (hold) | Move right |
+| Jump (hold) | Jump |
+| Echo (tap) | Leave a Remnant |
+| ↺ Restart (tap) | Restart the current level |
+| Next ▶ (tap) | Advance to the next level (shown on level complete) |
+
+**Multi-touch:** you can hold ◀ or ▶ while tapping Jump or Echo with another finger.
+
+> To test mobile controls on a desktop browser, add `?mobile` to the URL (e.g. `http://localhost:8080/?mobile`).
+
+---
+
 ## How to Run Locally
 
 Clone the repo and open `index.html` with any static file server.  
@@ -86,6 +109,8 @@ npx serve .
 | `O` | Toggle Observation Mode (0.3× time scale) |
 | `E` | Export playtest session data as JSON |
 | `F1` / `` ` `` | Toggle debug overlay |
+
+See [Mobile Controls](#mobile-controls) for touch device usage.
 
 ---
 
@@ -204,6 +229,7 @@ src/
     audio.js            ← Web Audio sound hooks
     analytics.js        ← in-memory event logger + JSON export
     hints.js            ← contextual hint system
+    mobile-ui.js        ← on-screen touch control overlay
   utils/
     debug.js            ← debug overlay rendering
 ```

@@ -75,14 +75,16 @@ export function drawMenuScreen(ctx) {
   ctx.fillStyle = 'rgba(168,200,255,0.65)';
   ctx.font      = '13px monospace';
   ctx.fillText('Move: ← → / A D      Jump: ↑ / W / Space', CANVAS_WIDTH / 2, 228);
-  ctx.fillText('R — Leave Remnant     T — Restart     O — Observe     E — Export data', CANVAS_WIDTH / 2, 248);
+  ctx.fillText('R — Leave Echo     T — Restart     O — Observe     E — Export data', CANVAS_WIDTH / 2, 248);
+  ctx.fillStyle = 'rgba(168,200,255,0.45)';
+  ctx.fillText('Touch device? On-screen controls appear automatically.', CANVAS_WIDTH / 2, 268);
 
   // "Press Enter" prompt — pulsing
   const pulse = 0.55 + 0.45 * Math.sin(t * 2.5);
   ctx.globalAlpha = pulse;
   ctx.fillStyle   = '#64dcff';
   ctx.font        = 'bold 19px monospace';
-  ctx.fillText('Press ENTER to Start', CANVAS_WIDTH / 2, 330);
+  ctx.fillText('Press ENTER to Start', CANVAS_WIDTH / 2, 315);
   ctx.globalAlpha = 1;
 
   // Footer
@@ -560,6 +562,7 @@ export function drawUIMessage(ctx, message, timer, total = 2.0) {
  *   interactables:     Array,
  *   observationMode?:  boolean,
  *   playtestEnabled?:  boolean,
+ *   debugEnabled?:     boolean,
  * }} hud
  */
 export function drawHUD(ctx, hud) {
@@ -580,6 +583,7 @@ export function drawHUD(ctx, hud) {
     interactables,
     observationMode  = false,
     playtestEnabled  = false,
+    debugEnabled     = false,
   } = hud;
 
   ctx.textAlign = 'left';
@@ -602,73 +606,77 @@ export function drawHUD(ctx, hud) {
     : 'rgba(168,200,255,0.85)'; // blue normally
   ctx.fillText(`Remnants: ${remnantCount} / ${maxRemnants}`, 12, 40);
 
-  // Recording sample count
-  ctx.fillStyle = 'rgba(100,220,255,0.7)';
-  ctx.fillText(`Recording: ${snapshotCount} samples`, 12, 57);
+  // Debug-only: recording sample counts and remnant replay state
+  if (debugEnabled) {
+    ctx.fillStyle = 'rgba(100,220,255,0.7)';
+    ctx.fillText(`Recording: ${snapshotCount} samples`, 12, 57);
 
-  // Captured timeline count (shown once committed at least once)
-  if (capturedCount > 0) {
-    ctx.fillStyle = 'rgba(245,197,24,0.85)';
-    ctx.fillText(`Captured: ${capturedCount} samples`, 12, 74);
-  }
-
-  // Per-remnant status (most recent only when multiple exist)
-  if (remnants.length > 0) {
-    const r = remnants[remnants.length - 1]; // newest
-    let remnantStatus;
-    if (r.isFinished) {
-      remnantStatus = 'Finished';
-    } else {
-      remnantStatus = 'Playing';
-    }
-    const yBase = capturedCount > 0 ? 91 : 74;
-    ctx.fillStyle = 'rgba(168,200,255,0.8)';
-    ctx.fillText(`Latest remnant: ${remnantStatus}`, 12, yBase);
-
-    // Solid-phase status
-    const solidLabel = r.isSolidToPlayer ? 'ON' : 'OFF';
-    ctx.fillStyle = r.isSolidToPlayer
-      ? 'rgba(144,200,255,1.0)'
-      : 'rgba(168,200,255,0.5)';
-    ctx.fillText(`Solid Phase: ${solidLabel}`, 12, yBase + 17);
-
-    // Replay time
-    if (!r.isFinished) {
-      const current  = (r.currentTime  / 1000).toFixed(2);
-      const duration = (r.duration     / 1000).toFixed(2);
-      const solidAt  = (r.solidPhaseStartTime / 1000).toFixed(2);
-      ctx.fillStyle = 'rgba(168,200,255,0.6)';
-      ctx.fillText(`Replay: ${current}s / ${duration}s`, 12, yBase + 34);
-      ctx.fillStyle = 'rgba(144,200,255,0.5)';
-      ctx.fillText(`Solid starts: ${solidAt}s`, 12, yBase + 51);
+    if (capturedCount > 0) {
+      ctx.fillStyle = 'rgba(245,197,24,0.85)';
+      ctx.fillText(`Captured: ${capturedCount} samples`, 12, 74);
     }
   }
 
-  // Button state
-  if (interactables) {
-    const buttons = interactables.filter(e => e.type === 'button');
-    if (buttons.length > 0) {
-      const button = buttons[0];
-      let buttonLabel;
-      if (!button.isPressed) {
-        buttonLabel = 'None';
-      } else if (
-        Array.isArray(button.pressedBy) &&
-        button.pressedBy.some(id => id !== 'player') &&
-        button.pressedBy.includes('player')
-      ) {
-        buttonLabel = 'Player + Remnant';
-      } else if (
-        Array.isArray(button.pressedBy) &&
-        button.pressedBy.some(id => id !== 'player')
-      ) {
-        buttonLabel = 'Remnant';
+  // Debug-only: per-remnant replay status and button state
+  if (debugEnabled) {
+    // Per-remnant status (most recent only when multiple exist)
+    if (remnants.length > 0) {
+      const r = remnants[remnants.length - 1]; // newest
+      let remnantStatus;
+      if (r.isFinished) {
+        remnantStatus = 'Finished';
       } else {
-        buttonLabel = 'Player';
+        remnantStatus = 'Playing';
       }
-      ctx.fillStyle = 'rgba(255,220,100,0.75)';
-      // Place button label below the remnant block — use a fixed offset from bottom
-      ctx.fillText(`Button: ${buttonLabel}`, 12, 200);
+      const yBase = capturedCount > 0 ? 91 : 74;
+      ctx.fillStyle = 'rgba(168,200,255,0.8)';
+      ctx.fillText(`Latest remnant: ${remnantStatus}`, 12, yBase);
+
+      // Solid-phase status
+      const solidLabel = r.isSolidToPlayer ? 'ON' : 'OFF';
+      ctx.fillStyle = r.isSolidToPlayer
+        ? 'rgba(144,200,255,1.0)'
+        : 'rgba(168,200,255,0.5)';
+      ctx.fillText(`Solid Phase: ${solidLabel}`, 12, yBase + 17);
+
+      // Replay time
+      if (!r.isFinished) {
+        const current  = (r.currentTime  / 1000).toFixed(2);
+        const duration = (r.duration     / 1000).toFixed(2);
+        const solidAt  = (r.solidPhaseStartTime / 1000).toFixed(2);
+        ctx.fillStyle = 'rgba(168,200,255,0.6)';
+        ctx.fillText(`Replay: ${current}s / ${duration}s`, 12, yBase + 34);
+        ctx.fillStyle = 'rgba(144,200,255,0.5)';
+        ctx.fillText(`Solid starts: ${solidAt}s`, 12, yBase + 51);
+      }
+    }
+
+    // Button state
+    if (interactables) {
+      const buttons = interactables.filter(e => e.type === 'button');
+      if (buttons.length > 0) {
+        const button = buttons[0];
+        let buttonLabel;
+        if (!button.isPressed) {
+          buttonLabel = 'None';
+        } else if (
+          Array.isArray(button.pressedBy) &&
+          button.pressedBy.some(id => id !== 'player') &&
+          button.pressedBy.includes('player')
+        ) {
+          buttonLabel = 'Player + Remnant';
+        } else if (
+          Array.isArray(button.pressedBy) &&
+          button.pressedBy.some(id => id !== 'player')
+        ) {
+          buttonLabel = 'Remnant';
+        } else {
+          buttonLabel = 'Player';
+        }
+        ctx.fillStyle = 'rgba(255,220,100,0.75)';
+        // Place button label below the remnant block — use a fixed offset from bottom
+        ctx.fillText(`Button: ${buttonLabel}`, 12, 200);
+      }
     }
   }
 
