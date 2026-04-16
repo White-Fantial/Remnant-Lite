@@ -27,10 +27,186 @@
       max-width: 100vw;
       max-height: 100vh;
     }
+
+    /* ── Feedback overlay ─────────────────────────────────────────────────── */
+
+    #feedback-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.80);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #feedback-overlay.visible {
+      display: flex;
+    }
+
+    #feedback-panel {
+      background: #1a1a2e;
+      border: 1px solid rgba(100, 220, 255, 0.3);
+      border-radius: 6px;
+      padding: 28px 32px;
+      width: 480px;
+      max-width: 95vw;
+      color: #e0e8ff;
+      font-family: monospace;
+    }
+
+    #feedback-panel h2 {
+      font-size: 18px;
+      color: #64dcff;
+      margin-bottom: 18px;
+      text-align: center;
+    }
+
+    .fb-question {
+      margin-bottom: 16px;
+    }
+
+    .fb-question label {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 6px;
+      color: rgba(200, 220, 255, 0.85);
+    }
+
+    .fb-question .fb-yesno {
+      display: flex;
+      gap: 10px;
+    }
+
+    .fb-question .fb-yesno button,
+    .fb-question .fb-scale button {
+      flex: 1;
+      padding: 6px 0;
+      background: rgba(100, 220, 255, 0.08);
+      border: 1px solid rgba(100, 220, 255, 0.25);
+      border-radius: 4px;
+      color: #64dcff;
+      font-family: monospace;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .fb-question .fb-yesno button.selected,
+    .fb-question .fb-yesno button:hover,
+    .fb-question .fb-scale button.selected,
+    .fb-question .fb-scale button:hover {
+      background: rgba(100, 220, 255, 0.22);
+    }
+
+    .fb-question .fb-scale {
+      display: flex;
+      gap: 8px;
+    }
+
+    .fb-question textarea {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(100, 220, 255, 0.2);
+      border-radius: 4px;
+      color: #e0e8ff;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 6px 8px;
+      resize: vertical;
+      min-height: 52px;
+      outline: none;
+    }
+
+    .fb-question textarea:focus {
+      border-color: rgba(100, 220, 255, 0.5);
+    }
+
+    #feedback-actions {
+      display: flex;
+      gap: 10px;
+      margin-top: 20px;
+    }
+
+    #feedback-actions button {
+      flex: 1;
+      padding: 9px 0;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    #fb-submit {
+      background: rgba(100, 220, 255, 0.18);
+      border: 1px solid rgba(100, 220, 255, 0.5);
+      color: #64dcff;
+    }
+
+    #fb-submit:hover {
+      background: rgba(100, 220, 255, 0.28);
+    }
+
+    #fb-skip {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.45);
+    }
+
+    #fb-skip:hover {
+      background: rgba(255, 255, 255, 0.09);
+    }
   </style>
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
+
+  <!-- ── Feedback overlay (shown after tutorial complete) ──────────────── -->
+  <div id="feedback-overlay" role="dialog" aria-modal="true" aria-label="Playtest feedback">
+    <div id="feedback-panel">
+      <h2>Quick Feedback</h2>
+
+      <!-- Q1: Yes / No -->
+      <div class="fb-question">
+        <label>1. Did you understand what the Echo (Remnant) does?</label>
+        <div class="fb-yesno">
+          <button data-q="q1" data-v="yes">Yes</button>
+          <button data-q="q1" data-v="no">No</button>
+        </div>
+      </div>
+
+      <!-- Q2: Free text -->
+      <div class="fb-question">
+        <label>2. What confused you the most? (optional)</label>
+        <textarea id="fb-confused" placeholder="Type here…" rows="2"></textarea>
+      </div>
+
+      <!-- Q3: 1–5 scale -->
+      <div class="fb-question">
+        <label>3. Was solving puzzles with your past self interesting? (1 = not at all, 5 = very)</label>
+        <div class="fb-scale">
+          <button data-q="q3" data-v="1">1</button>
+          <button data-q="q3" data-v="2">2</button>
+          <button data-q="q3" data-v="3">3</button>
+          <button data-q="q3" data-v="4">4</button>
+          <button data-q="q3" data-v="5">5</button>
+        </div>
+      </div>
+
+      <!-- Q4: Free text -->
+      <div class="fb-question">
+        <label>4. Any moment that felt frustrating? (optional)</label>
+        <textarea id="fb-frustration" placeholder="Type here…" rows="2"></textarea>
+      </div>
+
+      <div id="feedback-actions">
+        <button id="fb-submit">Save Feedback</button>
+        <button id="fb-skip">Skip</button>
+      </div>
+    </div>
+  </div>
+
   <script type="module" src="src/main.js"></script>
+  <script type="module" src="src/feedback-ui.js"></script>
 </body>
 </html>

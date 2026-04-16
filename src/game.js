@@ -23,6 +23,7 @@ import {
   JUMP_BUFFER_TIME,
   FAIL_DELAY,
   DEATH_Y_DEFAULT,
+  OBSERVATION_TIME_SCALE,
 } from './constants.js';
 import { levels } from './levels/index.js';
 import {
@@ -36,6 +37,8 @@ import { advanceRemnant } from './systems/replay.js';
 import { getActivators } from './systems/interaction.js';
 import { Sounds } from './systems/audio.js';
 import { drawDebugOverlay, drawGhostTrail } from './utils/debug.js';
+import { logEvent, exportSessionData } from './systems/analytics.js';
+import { resetHints, updateHints } from './systems/hints.js';
 
 /** Minimum number of timeline samples required to spawn a Remnant. */
 const MIN_REMNANT_SAMPLES = 3;
@@ -113,6 +116,19 @@ const state = {
     enabled: false,
   },
 
+  /**
+   * Playtest mode controls.
+   *
+   * enabled         — master switch; when true, hint UI, analytics, and the
+   *                   feedback overlay are all active.
+   * observationMode — when true the game runs at 0.3× speed so players can
+   *                   observe Remnant behaviour (toggled with O key).
+   */
+  playtest: {
+    enabled:         true,
+    observationMode: false,
+  },
+
   /** In-session playtest counters — in-memory only, no persistence. */
   metrics: {
     attempts:        0, // run attempts for current level (resets on level change)
@@ -121,6 +137,31 @@ const state = {
     levelStartTime:  0, // performance.now() at last loadLevel
     elapsedTime:     0, // seconds since last loadLevel (accumulated via dt)
   },
+
+  /**
+   * Session-wide aggregates — never reset between levels, only on startGame().
+   *
+   * totalTime        — cumulative seconds across the whole session.
+   * totalRemnants    — Remnants committed across all levels.
+   * totalRestarts    — restarts + fails across all levels.
+   * levelsCompleted  — number of goal zones reached.
+   * levelTimes       — array of { levelIndex, name, time } per completion.
+   * insightMoments   — key discovery events (first commit, first door open, etc.).
+   */
+  sessionMetrics: {
+    totalTime:       0,
+    totalRemnants:   0,
+    totalRestarts:   0,
+    levelsCompleted: 0,
+    levelTimes:      [],
+    insightMoments:  [],
+  },
+
+  /**
+   * Feedback collected via the in-game feedback overlay.
+   * null until the player submits the form.
+   */
+  feedback: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -209,15 +250,22 @@ function loadLevel(index) {
 
   // --- Metrics ---
   if (!isSameLevelReload) {
-    // New level — reset per-level counters
+    // New level — reset per-level counters; also reset hint state
     state.metrics.attempts       = 0;
     state.metrics.remnantCommits = 0;
     state.metrics.restartCount   = 0;
+    resetHints();
   }
   state.metrics.attempts++;
-  if (isSameLevelReload) state.metrics.restartCount++;
+  if (isSameLevelReload) {
+    state.metrics.restartCount++;
+    state.sessionMetrics.totalRestarts++;
+  }
   state.metrics.elapsedTime   = 0;
   state.metrics.levelStartTime = performance.now();
+
+  // Analytics
+  logEvent('level_start', { level: index, name: levelData.name ?? '' });
 }
 
 /**
@@ -225,6 +273,11 @@ function loadLevel(index) {
  * Equivalent to reloading the same level index.
  */
 function restartCurrentLevel() {
+  logEvent('restart_level', {
+    level:        state.currentLevelIndex,
+    timeInLevel:  parseFloat(state.metrics.elapsedTime.toFixed(2)),
+    remnants:     state.entities.remnants.length,
+  });
   Sounds.RESTART();
   loadLevel(state.currentLevelIndex);
   showMessage('Level Restarted', 1.2);
@@ -255,6 +308,13 @@ function checkFailCondition() {
     state.failTimer = FAIL_DELAY;
     showMessage('Run Failed', FAIL_DELAY + 0.3);
     Sounds.FAIL_RESET();
+
+    state.sessionMetrics.totalRestarts++;
+    logEvent('level_fail', {
+      level:        state.currentLevelIndex,
+      timeInLevel:  parseFloat(state.metrics.elapsedTime.toFixed(2)),
+      remnants:     state.entities.remnants.length,
+    });
   }
 }
 
@@ -307,8 +367,9 @@ function getBlockingColliders() {
  * can press buttons — no separate code path for each.
  *
  * @param {Array<{ id: string, x: number, y: number, width: number, height: number }>} activators
+ * @param {number} dt - Delta time in seconds (used for successFlash decay).
  */
-function updateButtons(activators) {
+function updateButtons(activators, dt) {
   for (const entity of state.interactables) {
     if (entity.type !== 'button') continue;
 
@@ -328,6 +389,30 @@ function updateButtons(activators) {
     // Play click on fresh press
     if (entity.isPressed && !wasPressed) {
       Sounds.BUTTON_PRESS();
+
+      // Detect first time a Remnant presses a button — key insight moment
+      const isRemnantPress = entity.pressedBy.some(id => id !== 'player');
+      if (isRemnantPress) {
+        // Ghost success highlight: store a flash timer on the entity
+        entity.successFlash = 1.2; // seconds
+
+        const alreadyTracked = state.sessionMetrics.insightMoments
+          .some(m => m.type === 'first_remnant_presses_button');
+        if (!alreadyTracked) {
+          const moment = {
+            type:  'first_remnant_presses_button',
+            level: state.currentLevelIndex,
+            time:  parseFloat(state.metrics.elapsedTime.toFixed(2)),
+          };
+          state.sessionMetrics.insightMoments.push(moment);
+          logEvent('first_remnant_presses_button', { level: moment.level, time: moment.time });
+        }
+      }
+    }
+
+    // Decay the success flash timer using dt for frame-rate independence
+    if (entity.successFlash > 0) {
+      entity.successFlash = Math.max(0, entity.successFlash - dt);
     }
   }
 }
@@ -335,8 +420,24 @@ function updateButtons(activators) {
 /**
  * Resolve door open/closed state from linked button states.
  * A door is open if at least one button that targets it is pressed.
+ * When a Remnant is responsible for opening a door, set a success flash.
+ *
+ * @param {number} dt - Delta time in seconds (used for successFlash decay).
  */
-function updateDoors() {
+function updateDoors(dt) {
+  // Build set of door IDs that Remnants are holding open
+  const remnantOpenDoorIds = new Set();
+  for (const entity of state.interactables) {
+    if (entity.type !== 'button' || !entity.isPressed || !entity.targets) continue;
+    const isRemnantPressing = Array.isArray(entity.pressedBy) &&
+      entity.pressedBy.some(id => id !== 'player');
+    if (isRemnantPressing) {
+      for (const targetId of entity.targets) {
+        remnantOpenDoorIds.add(targetId);
+      }
+    }
+  }
+
   const openDoorIds = new Set();
   for (const entity of state.interactables) {
     if (entity.type === 'button' && entity.isPressed && entity.targets) {
@@ -351,8 +452,33 @@ function updateDoors() {
       const wasOpen = entity.isOpen;
       entity.isOpen = openDoorIds.has(entity.id);
       if (entity.isOpen !== wasOpen) {
-        if (entity.isOpen) Sounds.DOOR_OPEN();
-        else               Sounds.DOOR_CLOSE();
+        if (entity.isOpen) {
+          Sounds.DOOR_OPEN();
+
+          // Ghost success highlight when a Remnant opens the door
+          if (remnantOpenDoorIds.has(entity.id)) {
+            entity.successFlash = 1.2;
+
+            const alreadyTracked = state.sessionMetrics.insightMoments
+              .some(m => m.type === 'first_remnant_opens_door');
+            if (!alreadyTracked) {
+              const moment = {
+                type:  'first_remnant_opens_door',
+                level: state.currentLevelIndex,
+                time:  parseFloat(state.metrics.elapsedTime.toFixed(2)),
+              };
+              state.sessionMetrics.insightMoments.push(moment);
+              logEvent('first_remnant_opens_door', { level: moment.level, time: moment.time });
+            }
+          }
+        } else {
+          Sounds.DOOR_CLOSE();
+        }
+      }
+
+      // Decay door success flash using dt for frame-rate independence
+      if (entity.successFlash > 0) {
+        entity.successFlash = Math.max(0, entity.successFlash - dt);
       }
     }
   }
@@ -377,7 +503,22 @@ function updateGoal(player) {
       state.runState      = 'levelComplete';
       Sounds.GOAL_REACHED();
 
-      const isLastLevel = state.currentLevelIndex === levels.length - 1;
+      const isLastLevel  = state.currentLevelIndex === levels.length - 1;
+      const levelTime    = parseFloat(state.metrics.elapsedTime.toFixed(2));
+
+      state.sessionMetrics.levelsCompleted++;
+      state.sessionMetrics.levelTimes.push({
+        levelIndex: state.currentLevelIndex,
+        name:       state.level.name,
+        time:       levelTime,
+      });
+
+      logEvent('level_complete', {
+        level:   state.currentLevelIndex,
+        time:    levelTime,
+        remnants: state.entities.remnants.length,
+      });
+
       showMessage(
         isLastLevel ? 'Tutorial Complete!' : 'Level Complete!',
         3.5,
@@ -422,6 +563,25 @@ function updateRemnantRecorder(nowMs) {
 
       state.entities.remnants.push(newRemnant);
       state.metrics.remnantCommits++;
+      state.sessionMetrics.totalRemnants++;
+
+      // Track first-ever remnant commit as a key insight moment
+      if (state.sessionMetrics.totalRemnants === 1) {
+        const moment = {
+          type:  'first_remnant_commit',
+          level: state.currentLevelIndex,
+          time:  parseFloat(state.metrics.elapsedTime.toFixed(2)),
+        };
+        state.sessionMetrics.insightMoments.push(moment);
+        logEvent('first_remnant_commit', { level: state.currentLevelIndex, time: moment.time });
+      }
+
+      logEvent('remnant_commit', {
+        level:    state.currentLevelIndex,
+        time:     parseFloat(state.metrics.elapsedTime.toFixed(2)),
+        samples:  timeline.length,
+        duration: parseFloat((newRemnant.duration / 1000).toFixed(2)),
+      });
 
       // Reset player to spawn so the new run begins cleanly
       state.player.position.x  = state.level.playerSpawn.x;
@@ -540,9 +700,23 @@ export function init(context) {
  * Resets all state so it feels like a fresh run.
  */
 function startGame() {
-  state.mode    = 'playing';
-  _initialLoad  = true; // treat first loadLevel as a brand-new session
+  state.mode   = 'playing';
+  _initialLoad = true; // treat first loadLevel as a brand-new session
+
+  // Reset session-wide aggregates for a new playthrough
+  state.sessionMetrics.totalTime       = 0;
+  state.sessionMetrics.totalRemnants   = 0;
+  state.sessionMetrics.totalRestarts   = 0;
+  state.sessionMetrics.levelsCompleted = 0;
+  state.sessionMetrics.levelTimes      = [];
+  state.sessionMetrics.insightMoments  = [];
+  state.feedback                       = null;
+
+  // Exit observation mode if it was active
+  state.playtest.observationMode = false;
+
   loadLevel(0);
+  logEvent('session_start');
 }
 
 /**
@@ -554,20 +728,23 @@ function startGame() {
  *  GameComplete — Enter / R → restart from level 1
  *  Playing    — full gameplay update (see order below):
  *    1.  Debug toggle (F1 / backtick)
- *    2.  T — instant restart
- *    3.  Level navigation (N / P) when level is complete
- *    4.  Fail state tick + UI messages
- *    5.  Player movement
- *    6.  Recorder tick + Remnant commit (R key)
- *    7.  Advance all Remnant replays
- *    8.  Gather activators
- *    9.  Update buttons
- *   10.  Update doors
- *   11.  Update goal / level completion
- *   12.  Check fail condition (out of bounds)
- *   13.  Update UI messages
- *   14.  Accumulate elapsed time metric
- *   15.  Clear one-shot input flags
+ *    2.  O — observation mode (0.3× time scale) toggle
+ *    3.  E — export session data to JSON
+ *    4.  T — instant restart
+ *    5.  Level navigation (N / P) when level is complete
+ *    6.  Fail state tick + UI messages
+ *    7.  Player movement
+ *    8.  Recorder tick + Remnant commit (R key)
+ *    9.  Advance all Remnant replays
+ *   10.  Gather activators
+ *   11.  Update buttons
+ *   12.  Update doors
+ *   13.  Update goal / level completion
+ *   14.  Check fail condition (out of bounds)
+ *   15.  Contextual hints
+ *   16.  Update UI messages
+ *   17.  Accumulate elapsed time metrics
+ *   18.  Clear one-shot input flags
  *
  * @param {number} dt - Delta time in seconds.
  */
@@ -590,6 +767,16 @@ export function update(dt) {
     return;
   }
 
+  // ── E key — export session data (available from any playing state) ─────
+  if (wasKeyJustPressed('KeyE')) {
+    state.sessionMetrics.totalTime =
+      parseFloat((state.sessionMetrics.totalTime + state.metrics.elapsedTime).toFixed(2));
+    exportSessionData(state.sessionMetrics, state.feedback);
+    showMessage('Session data exported', 2.0);
+    clearJustPressed();
+    return;
+  }
+
   // ── Playing mode ──────────────────────────────────────────────────────────
 
   // 1. Debug overlay toggle — F1 or backtick, works in all playing states
@@ -599,14 +786,30 @@ export function update(dt) {
     return;
   }
 
-  // 2. T — instant restart, works in all playing states
+  // 2. O — observation mode toggle (0.3× time scale)
+  if (wasKeyJustPressed('KeyO') && state.playtest.enabled) {
+    state.playtest.observationMode = !state.playtest.observationMode;
+    const label = state.playtest.observationMode ? 'Observation Mode ON (0.3×)' : 'Observation Mode OFF';
+    showMessage(label, 1.5);
+    logEvent('observation_mode_toggle', {
+      active: state.playtest.observationMode,
+      level:  state.currentLevelIndex,
+    });
+    clearJustPressed();
+    return;
+  }
+
+  // Apply time scale for observation mode — slow-motion when active
+  const effectiveDt = state.playtest.observationMode ? dt * OBSERVATION_TIME_SCALE : dt;
+
+  // 3. T — instant restart, works in all playing states
   if (wasKeyJustPressed('KeyT')) {
     restartCurrentLevel();
     clearJustPressed();
     return;
   }
 
-  // 3. Level navigation — only when not in fail state
+  // 4. Level navigation — only when not in fail state
   if (state.runState !== 'failed') {
     if (wasKeyJustPressed('KeyN') && state.levelComplete) {
       const nextIndex = state.currentLevelIndex + 1;
@@ -614,7 +817,15 @@ export function update(dt) {
         goToNextLevel();
       } else {
         // Last level cleared — transition to the game-complete screen
+        logEvent('session_complete', {
+          totalTime:       parseFloat(state.sessionMetrics.totalTime.toFixed(2)),
+          levelsCompleted: state.sessionMetrics.levelsCompleted,
+          totalRemnants:   state.sessionMetrics.totalRemnants,
+          totalRestarts:   state.sessionMetrics.totalRestarts,
+        });
         state.mode = 'gameComplete';
+        // Notify the feedback overlay to show after a short delay
+        window.dispatchEvent(new CustomEvent('remnant:gameComplete'));
       }
       clearJustPressed();
       return;
@@ -626,37 +837,51 @@ export function update(dt) {
     }
   }
 
-  // 4. While failed, tick the auto-restart countdown and keep messages updated
+  // 5. While failed, tick the auto-restart countdown and keep messages updated
   if (state.runState === 'failed') {
-    updateFailState(dt);
-    updateUIMessages(dt);
-    state.metrics.elapsedTime += dt;
+    updateFailState(effectiveDt);
+    updateUIMessages(effectiveDt);
+    state.metrics.elapsedTime          += effectiveDt;
+    state.sessionMetrics.totalTime     += effectiveDt;
     clearJustPressed();
     return;
   }
 
   // Freeze gameplay (but not input) when level is complete
   if (state.runState === 'levelComplete') {
-    updateUIMessages(dt);
-    state.metrics.elapsedTime += dt;
+    updateUIMessages(effectiveDt);
+    state.metrics.elapsedTime          += effectiveDt;
+    state.sessionMetrics.totalTime     += effectiveDt;
     clearJustPressed();
     return;
   }
 
-  // 5–12. Normal gameplay update
-  updatePlayer(dt);
+  // 6–14. Normal gameplay update
+  updatePlayer(effectiveDt);
   updateRemnantRecorder(performance.now());
-  updateAllRemnants(dt);
+  updateAllRemnants(effectiveDt);
 
   const activators = getActivators(state);
-  updateButtons(activators);
-  updateDoors();
+  updateButtons(activators, effectiveDt);
+  updateDoors(effectiveDt);
   updateGoal(state.player);
   checkFailCondition();
 
-  // 13–14.
-  updateUIMessages(dt);
-  state.metrics.elapsedTime += dt;
+  // 15. Contextual hints (only when playtest mode is on)
+  if (state.playtest.enabled) {
+    updateHints(
+      effectiveDt,
+      state.metrics,
+      state.currentLevelIndex,
+      state.entities.remnants.length,
+      showMessage,
+    );
+  }
+
+  // 16–17.
+  updateUIMessages(effectiveDt);
+  state.metrics.elapsedTime          += effectiveDt;
+  state.sessionMetrics.totalTime     += effectiveDt;
 
   clearJustPressed();
 }
@@ -677,7 +902,7 @@ export function render() {
 
   // ── Game-complete screen ──────────────────────────────────────────────────
   if (state.mode === 'gameComplete') {
-    drawGameCompleteScreen(ctx);
+    drawGameCompleteScreen(ctx, state.sessionMetrics);
     return;
   }
 
@@ -705,20 +930,22 @@ export function render() {
 
   // Layer 3 — HUD
   drawHUD(ctx, {
-    levelName:     state.level.name,
-    levelIndex:    state.currentLevelIndex,
-    totalLevels:   levels.length,
-    goalReached:   state.goalReached,
-    levelComplete: state.levelComplete,
+    levelName:        state.level.name,
+    levelIndex:       state.currentLevelIndex,
+    totalLevels:      levels.length,
+    goalReached:      state.goalReached,
+    levelComplete:    state.levelComplete,
     isLastLevel,
-    runState:      state.runState,
-    failTimer:     state.failTimer,
-    hint:          state.level.hint,
+    runState:         state.runState,
+    failTimer:        state.failTimer,
+    hint:             state.level.hint,
     snapshotCount,
-    capturedCount: state.remnant.latestTimeline.length,
+    capturedCount:    state.remnant.latestTimeline.length,
     remnants,
-    maxRemnants:   state.rules.maxRemnants,
-    interactables: state.interactables,
+    maxRemnants:      state.rules.maxRemnants,
+    interactables:    state.interactables,
+    observationMode:  state.playtest.observationMode,
+    playtestEnabled:  state.playtest.enabled,
   });
 
   // Layer 4 — overlays (timed messages, debug panel)
@@ -739,4 +966,14 @@ export function render() {
       canvasWidth:   CANVAS_WIDTH,
     });
   }
+}
+
+/**
+ * Store player feedback responses (called from the feedback overlay).
+ * Responses are attached to the session data so they appear in the export.
+ *
+ * @param {object} responses - Key/value pairs of feedback answers.
+ */
+export function submitFeedback(responses) {
+  state.feedback = responses;
 }

@@ -21,3 +21,6 @@ export const JUMP_BUFFER_TIME = 0.12;  // seconds a jump input is remembered bef
 // Fail / death
 export const FAIL_DELAY       = 1.5;   // seconds before auto-restart after failure
 export const DEATH_Y_DEFAULT  = 580;   // fallback Y threshold for out-of-bounds death
+
+// Playtest
+export const OBSERVATION_TIME_SCALE = 0.3; // time multiplier when observation mode is active
