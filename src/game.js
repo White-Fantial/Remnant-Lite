@@ -17,7 +17,7 @@ import {
   PLAYER_SPEED,
   JUMP_VELOCITY,
 } from './constants.js';
-import { level02 } from './levels/level-02.js';
+import { level03 } from './levels/level-03.js';
 import {
   createRecorder,
   tickRecorder,
@@ -58,7 +58,7 @@ const state = {
   interactables: [], // buttons, doors, goal zones
   goalReached:   false,
   entities: {
-    remnant: null, // active replaying Remnant (one at a time in Phase 5)
+    remnant: null, // active replaying Remnant (one at a time)
   },
   remnant: {
     recorder:       null, // Recorder instance — created on level load
@@ -108,8 +108,10 @@ function loadLevel(levelData) {
 /**
  * Build the list of colliders that are blocking movement this frame.
  * Closed doors are included; open doors are excluded.
+ * The active Remnant is included when it is in its solid phase.
  *
- * Accepts both player and future Remnant bodies as activators.
+ * Keeping collider gathering in one place makes it easy to add more
+ * conditional colliders in the future (multiple Remnants, timed blocks, etc.).
  *
  * @returns {Array<{ x: number, y: number, width: number, height: number }>}
  */
@@ -119,6 +121,12 @@ function getBlockingColliders() {
     if (entity.type === 'door' && !entity.isOpen) {
       colliders.push(entity);
     }
+  }
+  // Include the active Remnant as a physical collider only during its solid phase.
+  // When not solid the player passes straight through.
+  const remnant = state.entities.remnant;
+  if (remnant && remnant.isSolidToPlayer) {
+    colliders.push(remnant);
   }
   return colliders;
 }
@@ -300,7 +308,7 @@ function updatePlayer(dt) {
  */
 export function init(context) {
   ctx = context;
-  loadLevel(level02);
+  loadLevel(level03);
 }
 
 /**

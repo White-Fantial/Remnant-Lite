@@ -43,16 +43,27 @@ function sampleTimeline(timeline, t) {
  * When the end of the timeline is reached the Remnant is marked finished and
  * frozen at its last frame.
  *
+ * Solid-phase rule:
+ *   isSolidToPlayer = currentTime >= solidPhaseStartTime
+ *
+ * When replay finishes the flag is left as-is.  If the Remnant ended during
+ * the solid phase (the common case) it stays solid, giving the player a
+ * stable platform at the final position.  A Remnant shorter than the solid
+ * phase duration will be solid for its entire replay because solidPhaseStartTime
+ * is clamped to 0 by createRemnant.
+ *
  * @param {{
- *   timeline:    Array,
- *   currentTime: number,
- *   duration:    number,
- *   isPlaying:   boolean,
- *   isFinished:  boolean,
- *   x:           number,
- *   y:           number,
- *   facing:      number,
- *   isGrounded:  boolean,
+ *   timeline:            Array,
+ *   currentTime:         number,
+ *   duration:            number,
+ *   isPlaying:           boolean,
+ *   isFinished:          boolean,
+ *   solidPhaseStartTime: number,
+ *   isSolidToPlayer:     boolean,
+ *   x:                   number,
+ *   y:                   number,
+ *   facing:              number,
+ *   isGrounded:          boolean,
  * }} remnant
  * @param {number} dt - Delta time in seconds.
  */
@@ -66,11 +77,18 @@ export function advanceRemnant(remnant, dt) {
     remnant.currentTime = remnant.duration;
     remnant.isPlaying   = false;
     remnant.isFinished  = true;
+    // isSolidToPlayer is deliberately NOT changed here.
+    // If the replay ended during the solid phase the Remnant stays solid,
+    // giving the player a permanent platform at the final position.
   }
 
-  const sample     = sampleTimeline(remnant.timeline, remnant.currentTime);
+  const sample       = sampleTimeline(remnant.timeline, remnant.currentTime);
   remnant.x          = sample.x;
   remnant.y          = sample.y;
   remnant.facing     = sample.facing;
   remnant.isGrounded = sample.isGrounded;
+
+  // Update solid state: Remnant is physically solid only during the final
+  // portion of playback (currentTime >= solidPhaseStartTime).
+  remnant.isSolidToPlayer = remnant.currentTime >= remnant.solidPhaseStartTime;
 }
