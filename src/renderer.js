@@ -130,12 +130,44 @@ export function drawPlayer(ctx, position, isGrounded) {
 }
 
 /**
+ * Draw the active Remnant ghost.
+ * Rendered as a semi-transparent rectangle with a colored outline so it is
+ * clearly distinct from the solid player.
+ *
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object | null} remnant - Active Remnant entity, or null.
+ */
+export function drawRemnant(ctx, remnant) {
+  if (!remnant) return;
+
+  const alpha = remnant.isFinished ? 0.25 : 0.5;
+
+  // Translucent ghost fill
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#78a0e8';
+  ctx.fillRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+  // Bright outline
+  ctx.globalAlpha = remnant.isFinished ? 0.35 : 0.75;
+  ctx.strokeStyle = '#a8c8ff';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(remnant.x, remnant.y, remnant.width, remnant.height);
+
+  // Restore full opacity for subsequent draw calls
+  ctx.globalAlpha = 1;
+}
+
+/**
  * Draw the HUD overlay: level name, goal state, recording stats, and hints.
  * @param {CanvasRenderingContext2D} ctx
  * @param {string} levelName
  * @param {boolean} goalReached
  * @param {string} [hint]
- * @param {{ snapshotCount: number, bufferedSeconds: number, captureLabel: string }} [recording]
+ * @param {{
+ *   snapshotCount: number,
+ *   capturedCount: number,
+ *   activeRemnant: object | null,
+ * }} [recording]
  */
 export function drawHUD(ctx, levelName, goalReached, hint, recording) {
   ctx.textAlign = 'left';
@@ -147,16 +179,37 @@ export function drawHUD(ctx, levelName, goalReached, hint, recording) {
     ctx.fillText(levelName, 12, 20);
   }
 
-  // Recording stats — top-left below level name
+  // Recording / Remnant stats — top-left below level name
   if (recording) {
-    const bufferedSecondsText = recording.bufferedSeconds.toFixed(2);
     ctx.fillStyle = 'rgba(100,220,255,0.7)';
     ctx.fillText(`Recording: ${recording.snapshotCount} samples`, 12, 40);
-    ctx.fillText(`Buffered:  ${bufferedSecondsText}s`, 12, 57);
 
-    if (recording.captureLabel) {
-      ctx.fillStyle = 'rgba(245,197,24,0.9)';
-      ctx.fillText(recording.captureLabel, 12, 74);
+    // Captured timeline sample count (shown once at least one commit has been made)
+    if (recording.capturedCount > 0) {
+      ctx.fillStyle = 'rgba(245,197,24,0.85)';
+      ctx.fillText(`Captured: ${recording.capturedCount} samples`, 12, 57);
+    }
+
+    // Active Remnant status
+    const r = recording.activeRemnant;
+    let remnantStatus;
+    if (!r) {
+      remnantStatus = 'None';
+    } else if (r.isFinished) {
+      remnantStatus = 'Finished';
+    } else {
+      remnantStatus = 'Playing';
+    }
+
+    ctx.fillStyle = 'rgba(168,200,255,0.8)';
+    ctx.fillText(`Remnant: ${remnantStatus}`, 12, 74);
+
+    // Remnant time — shown while actively replaying
+    if (r && !r.isFinished) {
+      const current  = (r.currentTime  / 1000).toFixed(2);
+      const duration = (r.duration     / 1000).toFixed(2);
+      ctx.fillStyle = 'rgba(168,200,255,0.6)';
+      ctx.fillText(`Remnant Time: ${current} / ${duration}`, 12, 91);
     }
   }
 
@@ -166,9 +219,9 @@ export function drawHUD(ctx, levelName, goalReached, hint, recording) {
     ctx.fillText(hint, 12, CANVAS_HEIGHT - 30);
   }
 
-  // Remnant capture hint — bottom of screen
+  // Remnant commit hint — bottom of screen
   ctx.fillStyle = 'rgba(100,220,255,0.45)';
-  ctx.fillText('Press R to capture a Remnant timeline', 12, CANVAS_HEIGHT - 14);
+  ctx.fillText('Press R to leave a Remnant', 12, CANVAS_HEIGHT - 14);
 
   // Goal reached banner
   if (goalReached) {
