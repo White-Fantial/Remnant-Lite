@@ -7,7 +7,7 @@ import {
   drawPlatforms,
   drawInteractables,
   drawPlayer,
-  drawRemnant,
+  drawRemnants,
   drawHUD,
 } from './renderer.js';
 import {
@@ -17,7 +17,7 @@ import {
   PLAYER_SPEED,
   JUMP_VELOCITY,
 } from './constants.js';
-import { level03 } from './levels/level-03.js';
+import { levels } from './levels/index.js';
 import {
   createRecorder,
   tickRecorder,
@@ -36,12 +36,15 @@ let ctx;
 
 /**
  * Structured game state.
- * Kept as a single object to make future Remnant recording straightforward.
  *
- * interactables — array shared by buttons, doors, and goal zones so that
- * future Remnants can activate any of them without extra plumbing.
+ * entities.remnants — ordered array of active Remnants (creation order).
+ * rules.maxRemnants — how many Remnants can exist at once; oldest is evicted
+ *                     when the limit is exceeded.
  */
 const state = {
+  currentLevelIndex: 0,
+  levelComplete:     false,
+
   player: {
     position:   { x: 0, y: 0 },
     velocity:   { x: 0, y: 0 },
@@ -57,9 +60,14 @@ const state = {
   },
   interactables: [], // buttons, doors, goal zones
   goalReached:   false,
+
   entities: {
-    remnant: null, // active replaying Remnant (one at a time)
+    remnants: [], // active replaying Remnants (up to rules.maxRemnants)
   },
+  rules: {
+    maxRemnants: 2,
+  },
+
   remnant: {
     recorder:       null, // Recorder instance — created on level load
     latestTimeline: [],   // Last captured timeline (R key)
@@ -67,28 +75,33 @@ const state = {
 };
 
 // ---------------------------------------------------------------------------
-// Level loading
+// Level loading and progression
 // ---------------------------------------------------------------------------
 
 /**
- * Load level data into state and spawn the player.
- * Interactables are shallow-copied so runtime state (isPressed, isOpen)
- * does not bleed back into the level definition.
+ * Load a level by index into state, resetting all level-local data cleanly.
+ * Safe to call during gameplay — no page reload required.
  *
- * @param {{ name?: string, playerSpawn: { x: number, y: number }, platforms: Array, interactables?: Array }} levelData
+ * @param {number} index - Zero-based index into the levels array.
  */
-function loadLevel(levelData) {
+function loadLevel(index) {
+  if (index < 0 || index >= levels.length) return;
+
+  const levelData = levels[index];
+  state.currentLevelIndex = index;
+  state.levelComplete     = false;
+
   state.level.name        = levelData.name ?? '';
   state.level.hint        = levelData.hint ?? '';
   state.level.playerSpawn = levelData.playerSpawn;
   state.level.platforms   = levelData.platforms;
 
-  // Copy interactables so mutating isPressed/isOpen is safe
+  // Shallow-copy interactables so mutating isPressed/isOpen is safe
   state.interactables = (levelData.interactables ?? []).map(e => ({ ...e }));
   state.goalReached   = false;
 
-  // Clear the active Remnant so the room starts fresh
-  state.entities.remnant = null;
+  // Clear all active Remnants so the room starts fresh
+  state.entities.remnants = [];
 
   state.player.position.x = levelData.playerSpawn.x;
   state.player.position.y = levelData.playerSpawn.y;
@@ -101,6 +114,25 @@ function loadLevel(levelData) {
   state.remnant.latestTimeline = [];
 }
 
+/**
+ * Restart the current level from scratch.
+ * Equivalent to reloading the same level index.
+ */
+function restartCurrentLevel() {
+  loadLevel(state.currentLevelIndex);
+}
+
+/**
+ * Advance to the next level.
+ * If already on the last level, does nothing (completion UI handles this).
+ */
+function goToNextLevel() {
+  const nextIndex = state.currentLevelIndex + 1;
+  if (nextIndex < levels.length) {
+    loadLevel(nextIndex);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Subsystem helpers
 // ---------------------------------------------------------------------------
@@ -108,38 +140,33 @@ function loadLevel(levelData) {
 /**
  * Build the list of colliders that are blocking movement this frame.
  * Closed doors are included; open doors are excluded.
- * The active Remnant is included when it is in its solid phase.
- *
- * Keeping collider gathering in one place makes it easy to add more
- * conditional colliders in the future (multiple Remnants, timed blocks, etc.).
+ * Solid-phase Remnants are included so the player can stand on them.
  *
  * @returns {Array<{ x: number, y: number, width: number, height: number }>}
  */
 function getBlockingColliders() {
   const colliders = [...state.level.platforms];
+
   for (const entity of state.interactables) {
     if (entity.type === 'door' && !entity.isOpen) {
       colliders.push(entity);
     }
   }
-  // Include the active Remnant as a physical collider only during its solid phase.
-  // When not solid the player passes straight through.
-  const remnant = state.entities.remnant;
-  if (remnant && remnant.isSolidToPlayer) {
-    colliders.push(remnant);
+
+  // Each solid-phase Remnant becomes a physical platform for the player.
+  for (const remnant of state.entities.remnants) {
+    if (remnant.isSolidToPlayer) {
+      colliders.push(remnant);
+    }
   }
+
   return colliders;
 }
 
 /**
  * Update button pressed state.
- * Accepts a list of activators so both the live player and the active Remnant
+ * Accepts a list of activators so both the live player and all active Remnants
  * can press buttons — no separate code path for each.
- *
- * Each button gains a `pressedBy` array (the ids of current activators)
- * which the HUD and renderer can use to show who triggered it.
- *
- * Activator shape: { id, type, x, y, width, height, canActivateButtons }
  *
  * @param {Array<{ id: string, x: number, y: number, width: number, height: number }>} activators
  */
@@ -147,7 +174,6 @@ function updateButtons(activators) {
   for (const entity of state.interactables) {
     if (entity.type !== 'button') continue;
 
-    // Collect ids of all activators currently overlapping this button.
     entity.pressedBy = activators
       .filter(a =>
         aabbOverlap(
@@ -166,7 +192,6 @@ function updateButtons(activators) {
  * A door is open if at least one button that targets it is pressed.
  */
 function updateDoors() {
-  // Collect the set of door IDs that should be open this frame
   const openDoorIds = new Set();
   for (const entity of state.interactables) {
     if (entity.type === 'button' && entity.isPressed && entity.targets) {
@@ -188,7 +213,7 @@ function updateDoors() {
  * @param {{ position: { x: number, y: number }, width: number, height: number }} player
  */
 function updateGoal(player) {
-  if (state.goalReached) return; // latch — stay true once reached
+  if (state.goalReached) return; // latch — stays true once reached
   for (const entity of state.interactables) {
     if (entity.type !== 'goal') continue;
     if (
@@ -197,24 +222,26 @@ function updateGoal(player) {
         entity.x, entity.y, entity.width, entity.height,
       )
     ) {
-      state.goalReached = true;
+      state.goalReached  = true;
+      state.levelComplete = true;
     }
   }
 }
 
 /**
- * Tick the recorder and handle Remnant commit input.
+ * Tick the recorder and handle Remnant commit input (R key).
  *
- * Pressing R:
- *  1. captures the current buffered timeline
- *  2. creates a Remnant entity if there are enough samples
- *  3. replaces any existing active Remnant
- *  4. resets the player to the level spawn
- *  5. starts a fresh recorder so the new run records cleanly
+ * When R is pressed:
+ *  1. Capture the current buffered timeline.
+ *  2. If there are enough samples, create a new Remnant.
+ *  3. If at the Remnant limit, evict the oldest Remnant first (index 0).
+ *  4. Push the new Remnant to the end of the array.
+ *  5. Reset the player to the level spawn.
+ *  6. Start a fresh recorder.
  *
  * @param {number} nowMs - Current wall-clock time in milliseconds.
  */
-function updateRemnant(nowMs) {
+function updateRemnantRecorder(nowMs) {
   const { recorder } = state.remnant;
   if (!recorder) return;
 
@@ -225,8 +252,15 @@ function updateRemnant(nowMs) {
     state.remnant.latestTimeline = timeline;
 
     if (timeline.length >= MIN_REMNANT_SAMPLES) {
-      // Create and store the active Remnant (replaces any previous one)
-      state.entities.remnant = createRemnant(timeline);
+      const newRemnant = createRemnant(timeline);
+
+      // Evict oldest Remnant when at limit (FIFO replacement)
+      if (state.entities.remnants.length >= state.rules.maxRemnants) {
+        const evicted = state.entities.remnants.shift();
+        console.log(`Remnant evicted: ${evicted.id}`);
+      }
+
+      state.entities.remnants.push(newRemnant);
 
       // Reset player to spawn so the new run begins cleanly
       state.player.position.x = state.level.playerSpawn.x;
@@ -239,8 +273,10 @@ function updateRemnant(nowMs) {
       state.remnant.recorder = createRecorder();
 
       console.log(
-        `Remnant spawned: ${timeline.length} samples, ` +
-        `duration ${(state.entities.remnant.duration / 1000).toFixed(2)}s`,
+        `Remnant spawned: ${newRemnant.id}, ` +
+        `${timeline.length} samples, ` +
+        `duration ${(newRemnant.duration / 1000).toFixed(2)}s — ` +
+        `active: ${state.entities.remnants.length}/${state.rules.maxRemnants}`,
       );
     } else {
       console.log(`Timeline too short to spawn a Remnant (${timeline.length} samples)`);
@@ -249,13 +285,13 @@ function updateRemnant(nowMs) {
 }
 
 /**
- * Advance the active Remnant's playback each frame.
+ * Advance all active Remnants' playback each frame.
  * @param {number} dt - Delta time in seconds.
  */
-function updateReplay(dt) {
-  const { remnant } = state.entities;
-  if (!remnant) return;
-  advanceRemnant(remnant, dt);
+function updateAllRemnants(dt) {
+  for (const remnant of state.entities.remnants) {
+    advanceRemnant(remnant, dt);
+  }
 }
 
 /**
@@ -308,36 +344,59 @@ function updatePlayer(dt) {
  */
 export function init(context) {
   ctx = context;
-  loadLevel(level03);
+  loadLevel(0);
 }
 
 /**
  * Update all game logic for one frame.
+ *
  * Order:
- *   1. live player movement
- *   2. recorder tick + Remnant commit (R key)
- *   3. Remnant playback advance
- *   4. gather activators (player + Remnant)
- *   5. update buttons
- *   6. update doors
- *   7. update goal
- *   8. clear one-shot input flags
+ *  1. level transition / restart inputs
+ *  2. player movement
+ *  3. recorder tick + Remnant commit (R key)
+ *  4. advance all Remnant replays
+ *  5. gather activators (player + all Remnants)
+ *  6. update buttons
+ *  7. update doors
+ *  8. update goal / level completion
+ *  9. clear one-shot input flags
  *
  * @param {number} dt - Delta time in seconds.
  */
 export function update(dt) {
-  updatePlayer(dt);
-  updateRemnant(performance.now());
-  updateReplay(dt);
+  // --- Level control inputs (handled first so restart is always responsive) ---
+  // These bypass the normal game update so no stale state leaks.
 
-  // Gather all entities that can trigger buttons this frame, then resolve
-  // button and door state.  Door logic reads button state, so buttons first.
+  let levelControlUsed = false;
+
+  if (wasKeyJustPressed('KeyT')) {
+    restartCurrentLevel();
+    levelControlUsed = true;
+  } else if (wasKeyJustPressed('KeyN') && state.levelComplete) {
+    if (state.currentLevelIndex + 1 < levels.length) {
+      goToNextLevel();
+    }
+    levelControlUsed = true;
+  } else if (wasKeyJustPressed('KeyP')) {
+    // P = previous level (quick testing convenience)
+    loadLevel(Math.max(0, state.currentLevelIndex - 1));
+    levelControlUsed = true;
+  }
+
+  if (levelControlUsed) {
+    clearJustPressed();
+    return;
+  }
+
+  updatePlayer(dt);
+  updateRemnantRecorder(performance.now());
+  updateAllRemnants(dt);
+
   const activators = getActivators(state);
   updateButtons(activators);
   updateDoors();
   updateGoal(state.player);
 
-  // Clear one-shot key presses after all systems have read them.
   clearJustPressed();
 }
 
@@ -347,17 +406,26 @@ export function update(dt) {
 export function render() {
   const { recorder } = state.remnant;
   const snapshotCount = recorder ? getSnapshotCount(recorder) : 0;
-  const activeRemnant = state.entities.remnant;
+  const { remnants }  = state.entities;
+  const isLastLevel   = state.currentLevelIndex === levels.length - 1;
 
   clearScreen(ctx);
   drawPlatforms(ctx, state.level.platforms);
-  drawInteractables(ctx, state.interactables, activeRemnant);
-  drawRemnant(ctx, activeRemnant);
+  drawInteractables(ctx, state.interactables, remnants);
+  drawRemnants(ctx, remnants);
   drawPlayer(ctx, state.player.position, state.player.isGrounded);
-  drawHUD(ctx, state.level.name, state.goalReached, state.level.hint, {
+  drawHUD(ctx, {
+    levelName:     state.level.name,
+    levelIndex:    state.currentLevelIndex,
+    totalLevels:   levels.length,
+    goalReached:   state.goalReached,
+    levelComplete: state.levelComplete,
+    isLastLevel,
+    hint:          state.level.hint,
     snapshotCount,
-    capturedCount:  state.remnant.latestTimeline.length,
-    activeRemnant,
-    interactables:  state.interactables,
+    capturedCount: state.remnant.latestTimeline.length,
+    remnants,
+    maxRemnants:   state.rules.maxRemnants,
+    interactables: state.interactables,
   });
 }

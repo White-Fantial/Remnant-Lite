@@ -15,23 +15,22 @@
  *   width:             number,
  *   height:            number,
  *   canActivateButtons: boolean,
- *   isSolidToPlayer:   boolean,         // read by Phase 7 collision pipeline
+ *   isSolidToPlayer:   boolean,         // read by collision pipeline
  * }
  */
 
 /**
  * Build the list of entities that can activate buttons this frame.
  *
- * Rules (Phase 6):
+ * Rules:
  *  - The live player is always included.
- *  - The active Remnant is included when it exists and its
- *    `canActivateButtons` flag is true.  The flag is checked here so
- *    future phases can disable it during specific replay states without
- *    touching this function.
+ *  - Each active Remnant is included when its `canActivateButtons` flag is true.
+ *    The flag is checked here so future phases can disable it during specific
+ *    replay states without touching this function.
  *
  * @param {{
  *   player: { position: { x: number, y: number }, width: number, height: number },
- *   entities: { remnant: object | null },
+ *   entities: { remnants: object[] },
  * }} state
  * @returns {Array<{
  *   id: string, type: string,
@@ -44,20 +43,21 @@ export function getActivators(state) {
 
   // Live player — always a potential activator.
   activators.push({
-    id:                'player',
-    type:              'player',
-    x:                 state.player.position.x,
-    y:                 state.player.position.y,
-    width:             state.player.width,
-    height:            state.player.height,
+    id:                 'player',
+    type:               'player',
+    x:                  state.player.position.x,
+    y:                  state.player.position.y,
+    width:              state.player.width,
+    height:             state.player.height,
     canActivateButtons: true,
-    isSolidToPlayer:   false,
+    isSolidToPlayer:    false,
   });
 
-  // Active Remnant — included only when allowed to activate buttons.
-  const remnant = state.entities.remnant;
-  if (remnant && remnant.canActivateButtons) {
-    activators.push(remnant);
+  // All active Remnants — included only when allowed to activate buttons.
+  for (const remnant of state.entities.remnants) {
+    if (remnant.canActivateButtons) {
+      activators.push(remnant);
+    }
   }
 
   return activators;
