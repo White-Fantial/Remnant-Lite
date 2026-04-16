@@ -9,7 +9,7 @@ import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT, OBSERVATION_T
 /**
  * Draw the main menu / title screen.
  * Renders animated ghost silhouettes drifting in the background so the player
- * gets a visual hint of the echo mechanic before pressing Start.
+ * gets a visual hint of the Remnant mechanic before pressing Start.
  *
  * @param {CanvasRenderingContext2D} ctx
  */
@@ -75,7 +75,7 @@ export function drawMenuScreen(ctx) {
   ctx.fillStyle = 'rgba(168,200,255,0.65)';
   ctx.font      = '13px monospace';
   ctx.fillText('Move: ← → / A D      Jump: ↑ / W / Space', CANVAS_WIDTH / 2, 228);
-  ctx.fillText('R — Leave Echo     T — Restart     O — Observe     E — Export data', CANVAS_WIDTH / 2, 248);
+  ctx.fillText('R — Leave Remnant     T — Restart     O — Observe     E — Export data', CANVAS_WIDTH / 2, 248);
 
   // "Press Enter" prompt — pulsing
   const pulse = 0.55 + 0.45 * Math.sin(t * 2.5);
@@ -88,7 +88,7 @@ export function drawMenuScreen(ctx) {
   // Footer
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
   ctx.font      = '11px monospace';
-  ctx.fillText('Phase 11 Playtest Build', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 16);
+  ctx.fillText('Phase 12 Build — v0.1.0-remnant-lite', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 16);
 }
 
 // ---------------------------------------------------------------------------
@@ -143,7 +143,7 @@ export function drawGameCompleteScreen(ctx, sessionMetrics) {
 
     ctx.fillText(`Total time:      ${timeStr}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 8);
     ctx.fillText(
-      `Echoes created:  ${sessionMetrics.totalRemnants}`,
+      `Remnants created: ${sessionMetrics.totalRemnants}`,
       CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10,
     );
     ctx.fillText(
@@ -173,7 +173,7 @@ export function drawGameCompleteScreen(ctx, sessionMetrics) {
   // Prototype note
   ctx.fillStyle = 'rgba(168,200,255,0.4)';
   ctx.font      = '12px monospace';
-  ctx.fillText('Phase 11 Playtest Build', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20);
+  ctx.fillText('Phase 12 Build — v0.1.0-remnant-lite', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20);
 
   // Restart prompt — pulsing
   const t     = Date.now() / 1000;
@@ -600,7 +600,7 @@ export function drawHUD(ctx, hud) {
   ctx.fillStyle = remnantCount >= maxRemnants
     ? 'rgba(255,180,80,0.9)'   // orange when at limit
     : 'rgba(168,200,255,0.85)'; // blue normally
-  ctx.fillText(`Echoes: ${remnantCount} / ${maxRemnants}`, 12, 40);
+  ctx.fillText(`Remnants: ${remnantCount} / ${maxRemnants}`, 12, 40);
 
   // Recording sample count
   ctx.fillStyle = 'rgba(100,220,255,0.7)';
@@ -623,7 +623,7 @@ export function drawHUD(ctx, hud) {
     }
     const yBase = capturedCount > 0 ? 91 : 74;
     ctx.fillStyle = 'rgba(168,200,255,0.8)';
-    ctx.fillText(`Latest echo: ${remnantStatus}`, 12, yBase);
+    ctx.fillText(`Latest remnant: ${remnantStatus}`, 12, yBase);
 
     // Solid-phase status
     const solidLabel = r.isSolidToPlayer ? 'ON' : 'OFF';
@@ -657,12 +657,12 @@ export function drawHUD(ctx, hud) {
         button.pressedBy.some(id => id !== 'player') &&
         button.pressedBy.includes('player')
       ) {
-        buttonLabel = 'Player + Echo';
+        buttonLabel = 'Player + Remnant';
       } else if (
         Array.isArray(button.pressedBy) &&
         button.pressedBy.some(id => id !== 'player')
       ) {
-        buttonLabel = 'Echo';
+        buttonLabel = 'Remnant';
       } else {
         buttonLabel = 'Player';
       }
@@ -682,7 +682,7 @@ export function drawHUD(ctx, hud) {
 
   // Controls
   ctx.fillStyle = 'rgba(100,220,255,0.45)';
-  ctx.fillText('R — echo   T — restart   O — observe   E — export   F1 — debug', 12, CANVAS_HEIGHT - 30);
+  ctx.fillText('R — remnant   T — restart   O — observe   E — export   F1 — debug', 12, CANVAS_HEIGHT - 30);
 
   if (levelComplete) {
     ctx.fillStyle = 'rgba(100,220,255,0.45)';
@@ -735,7 +735,7 @@ export function drawHUD(ctx, hud) {
 
       ctx.font = '14px monospace';
       ctx.fillStyle = 'rgba(255,255,255,0.7)';
-      ctx.fillText('You have mastered the Echo mechanic.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
+      ctx.fillText('You have mastered the Remnant mechanic.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 20);
     } else {
       ctx.fillStyle = '#64dcff';
       ctx.font = 'bold 30px monospace';

@@ -26,7 +26,7 @@
  * @type {HintConfig[]}
  */
 const LEVEL_HINTS = [
-  // Level 1: Echo on the Switch
+  // Level 1: Echo on the Switch — hint intentionally avoids revealing the level name
   {
     text:            'Try leaving a Remnant (R) and watch it.',
     triggerTime:     20,

@@ -1,9 +1,57 @@
 # Remnant Lite
 
-A small puzzle-platformer prototype built with plain JavaScript and the Canvas API — no frameworks, no build step.
+A puzzle-platformer prototype built with plain JavaScript and the Canvas API — no frameworks, no build step.
 
-You leave behind an **Echo** (a ghost replay of your past movements) that can interact with the world while you move freely.  
-Use it to hold buttons, open doors, and reach places your present self cannot.
+---
+
+## What Remnant Lite Is
+
+Remnant Lite is a prototype for a spatial planning puzzle-platformer.
+
+You leave behind a **Remnant** — a ghost replay of your recent movements — that can hold buttons, open doors, and eventually solidify into a platform you can stand on.
+
+The core skill is **planning the past so the present can succeed**: deciding where to walk so that your past self is useful, then using the effects of that run to reach the goal.
+
+Three tutorial levels demonstrate the mechanic without instruction — the game communicates through play.
+
+---
+
+## What It Proves
+
+- Players understand the Remnant mechanic through observation, without reading a manual.
+- The button-door-Remnant puzzle pattern reliably produces "aha" moments.
+- The solid-phase twist — ghost becomes platform — is a memorable discovery beat.
+- The planning loop is engaging: players think before they commit.
+
+See [`docs/post-prototype-evaluation.md`](docs/post-prototype-evaluation.md) and [`docs/next-step-decision.md`](docs/next-step-decision.md) for a full assessment.
+
+---
+
+## Current Feature Set
+
+- 3 tutorial levels with escalating complexity
+- Remnant recording (last 5 s of movement) and replay
+- Ghost phase (Remnant activates buttons) → solid phase (Remnant is a physical platform)
+- Up to 2 active Remnants per level (oldest evicted on overflow)
+- Menu, level-complete, and game-complete screens
+- Playtest analytics: session export (E key), observation mode (O key, 0.3× speed)
+- Contextual hint system
+- Debug overlay (F1)
+
+---
+
+## Controls
+
+| Key | Action |
+|-----|--------|
+| `← →` / `A D` | Move left / right |
+| `↑` / `W` / `Space` | Jump |
+| `R` | Commit a Remnant (records last ~5 s, resets to spawn) |
+| `T` | Restart the current level |
+| `N` | Advance to the next level (after completing a level) |
+| `O` | Toggle Observation Mode (0.3× time scale) |
+| `E` | Export playtest session data as JSON |
+| `F1` / `` ` `` | Toggle debug overlay |
 
 ---
 
@@ -65,7 +113,7 @@ npx serve .
 
 ### What the developer wants to know
 
-- Did you understand what the Echo does **without** being told?
+- Did you understand what the Remnant does **without** being told?
 - Was there a moment when it "clicked"?
 - What was the most confusing or frustrating part?
 - Did the controls feel responsive?
@@ -78,10 +126,10 @@ Press **E** at any time during or after a session.
 A JSON file named `remnant_playtest_YYYYMMDD.json` will download automatically.
 
 The file contains:
-- **events** — timestamped log of every action (level starts, fails, echo commits, etc.)
-- **sessionMetrics** — total time, total echoes, total restarts, levels completed
+- **events** — timestamped log of every action (level starts, fails, Remnant commits, etc.)
+- **sessionMetrics** — total time, total Remnants, total restarts, levels completed
 - **feedback** — your answers from the feedback form (if submitted)
-- **insightMoments** — first-time discovery events (first echo commit, first door opened by echo, etc.)
+- **insightMoments** — first-time discovery events (first Remnant commit, first door opened by Remnant, etc.)
 
 If the download fails (e.g. on a `file://` origin), the data is printed to the browser console as JSON.
 
@@ -91,16 +139,16 @@ If the download fails (e.g. on a `file://` origin), the data is printed to the b
 
 The prototype is considered successful if testers:
 
-✅ Understand the Echo mechanic without explanation  
-✅ Intentionally plan Echo usage  
+✅ Understand the Remnant mechanic without explanation  
+✅ Intentionally plan Remnant usage  
 ✅ Report "aha" moments  
 ✅ Find controls responsive
 
 The prototype needs redesign if testers:
 
-❌ Don't understand what the Echo does  
+❌ Don't understand what the Remnant does  
 ❌ Use trial-and-error instead of planning  
-❌ Ignore the Echo mechanic entirely  
+❌ Ignore the Remnant mechanic entirely  
 ❌ Find timing frustrating
 
 ---
@@ -148,10 +196,10 @@ src/
     level-02.js
     level-03.js
   entities/
-    remnant.js          ← Echo entity definition
+    remnant.js          ← Remnant entity definition
   systems/
     recorder.js         ← timeline recording
-    replay.js           ← Echo playback
+    replay.js           ← Remnant playback
     interaction.js      ← button / door / goal logic
     audio.js            ← Web Audio sound hooks
     analytics.js        ← in-memory event logger + JSON export
@@ -167,3 +215,21 @@ src/
 - Vanilla JavaScript (ES modules)
 - Canvas 2D API
 - No dependencies, no build step, no framework
+
+---
+
+## Documentation Index
+
+| Document | Purpose |
+|---|---|
+| [`docs/post-prototype-evaluation.md`](docs/post-prototype-evaluation.md) | What worked, what did not, what remains uncertain |
+| [`docs/core-design-summary.md`](docs/core-design-summary.md) | Validated concept — pitch, player fantasy, core loop, mechanic rules |
+| [`docs/mechanics-reference.md`](docs/mechanics-reference.md) | Authoritative rules reference for the prototype |
+| [`docs/technical-architecture.md`](docs/technical-architecture.md) | System responsibilities, update loop, data flow |
+| [`docs/migration-plan.md`](docs/migration-plan.md) | How to evolve Remnant Lite into a fuller game |
+| [`docs/production-backlog.md`](docs/production-backlog.md) | Proposed next backlog by category and priority |
+| [`docs/scope-guardrails.md`](docs/scope-guardrails.md) | What should not be added too early — scope protection |
+| [`docs/level-design-review.md`](docs/level-design-review.md) | Per-level analysis of intended lesson and recommended changes |
+| [`docs/next-step-decision.md`](docs/next-step-decision.md) | Executive summary — is the idea worth continuing? |
+| [`docs/project-pitch.md`](docs/project-pitch.md) | Short pitch-deck style summary for collaborators |
+| [`CHANGELOG.md`](CHANGELOG.md) | Phase-by-phase changelog |
