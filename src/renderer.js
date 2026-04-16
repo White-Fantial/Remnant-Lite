@@ -1,6 +1,6 @@
 // Renderer — responsible for all draw calls
 
-import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT } from './constants.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, PLAYER_WIDTH, PLAYER_HEIGHT, OBSERVATION_TIME_SCALE } from './constants.js';
 
 // ---------------------------------------------------------------------------
 // Menu screen
@@ -695,7 +695,7 @@ export function drawHUD(ctx, hud) {
     ctx.textAlign   = 'right';
     ctx.fillStyle   = 'rgba(100,220,255,0.9)';
     ctx.font        = 'bold 12px monospace';
-    ctx.fillText('● OBSERVATION  0.3×', CANVAS_WIDTH - 12, 20);
+    ctx.fillText(`● OBSERVATION  ${OBSERVATION_TIME_SCALE}×`, CANVAS_WIDTH - 12, 20);
     ctx.restore();
   }
 

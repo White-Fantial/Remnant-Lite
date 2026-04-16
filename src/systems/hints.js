@@ -97,8 +97,9 @@ export function updateHints(dt, metrics, levelIndex, remnantCount, showMessage) 
   // Condition A: player has been in the level long enough without using a Remnant
   const stuckOnTime = metrics.elapsedTime >= config.triggerTime && remnantCount === 0;
 
-  // Condition B: player has restarted many times without using a Remnant
-  const stuckOnRestarts = metrics.restartCount >= config.triggerRestarts && remnantCount === 0;
+  // Condition B: player has restarted many times regardless of Remnant usage —
+  // the hint may still help even if they've committed a Remnant but are stuck.
+  const stuckOnRestarts = metrics.restartCount >= config.triggerRestarts;
 
   if ((stuckOnTime || stuckOnRestarts) && !_hintShown) {
     showMessage(config.text, 5.0);

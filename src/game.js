@@ -23,6 +23,7 @@ import {
   JUMP_BUFFER_TIME,
   FAIL_DELAY,
   DEATH_Y_DEFAULT,
+  OBSERVATION_TIME_SCALE,
 } from './constants.js';
 import { levels } from './levels/index.js';
 import {
@@ -366,8 +367,9 @@ function getBlockingColliders() {
  * can press buttons — no separate code path for each.
  *
  * @param {Array<{ id: string, x: number, y: number, width: number, height: number }>} activators
+ * @param {number} dt - Delta time in seconds (used for successFlash decay).
  */
-function updateButtons(activators) {
+function updateButtons(activators, dt) {
   for (const entity of state.interactables) {
     if (entity.type !== 'button') continue;
 
@@ -408,9 +410,9 @@ function updateButtons(activators) {
       }
     }
 
-    // Decay the success flash timer each frame
+    // Decay the success flash timer using dt for frame-rate independence
     if (entity.successFlash > 0) {
-      entity.successFlash = Math.max(0, entity.successFlash - (1 / 60));
+      entity.successFlash = Math.max(0, entity.successFlash - dt);
     }
   }
 }
@@ -419,8 +421,10 @@ function updateButtons(activators) {
  * Resolve door open/closed state from linked button states.
  * A door is open if at least one button that targets it is pressed.
  * When a Remnant is responsible for opening a door, set a success flash.
+ *
+ * @param {number} dt - Delta time in seconds (used for successFlash decay).
  */
-function updateDoors() {
+function updateDoors(dt) {
   // Build set of door IDs that Remnants are holding open
   const remnantOpenDoorIds = new Set();
   for (const entity of state.interactables) {
@@ -472,9 +476,9 @@ function updateDoors() {
         }
       }
 
-      // Decay door success flash
+      // Decay door success flash using dt for frame-rate independence
       if (entity.successFlash > 0) {
-        entity.successFlash = Math.max(0, entity.successFlash - (1 / 60));
+        entity.successFlash = Math.max(0, entity.successFlash - dt);
       }
     }
   }
@@ -796,7 +800,7 @@ export function update(dt) {
   }
 
   // Apply time scale for observation mode — slow-motion when active
-  const effectiveDt = state.playtest.observationMode ? dt * 0.3 : dt;
+  const effectiveDt = state.playtest.observationMode ? dt * OBSERVATION_TIME_SCALE : dt;
 
   // 3. T — instant restart, works in all playing states
   if (wasKeyJustPressed('KeyT')) {
@@ -858,8 +862,8 @@ export function update(dt) {
   updateAllRemnants(effectiveDt);
 
   const activators = getActivators(state);
-  updateButtons(activators);
-  updateDoors();
+  updateButtons(activators, effectiveDt);
+  updateDoors(effectiveDt);
   updateGoal(state.player);
   checkFailCondition();
 
