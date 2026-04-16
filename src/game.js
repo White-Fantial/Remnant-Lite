@@ -7,6 +7,7 @@ import {
   drawPlatforms,
   drawInteractables,
   drawPlayer,
+  drawRemnant,
   drawHUD,
 } from './renderer.js';
 import {
@@ -22,8 +23,12 @@ import {
   tickRecorder,
   getCurrentRecording,
   getSnapshotCount,
-  getBufferedSeconds,
 } from './systems/recorder.js';
+import { createRemnant } from './entities/remnant.js';
+import { advanceRemnant } from './systems/replay.js';
+
+/** Minimum number of timeline samples required to spawn a Remnant. */
+const MIN_REMNANT_SAMPLES = 3;
 
 /** @type {CanvasRenderingContext2D} */
 let ctx;
@@ -51,10 +56,12 @@ const state = {
   },
   interactables: [], // buttons, doors, goal zones
   goalReached:   false,
+  entities: {
+    remnant: null, // active replaying Remnant (one at a time in Phase 5)
+  },
   remnant: {
-    recorder:       null,   // Recorder instance — created on level load
-    latestTimeline: [],     // Last captured timeline (R key)
-    captureLabel:   '',     // Debug label shown in HUD after capture
+    recorder:       null, // Recorder instance — created on level load
+    latestTimeline: [],   // Last captured timeline (R key)
   },
 };
 
@@ -79,6 +86,9 @@ function loadLevel(levelData) {
   state.interactables = (levelData.interactables ?? []).map(e => ({ ...e }));
   state.goalReached   = false;
 
+  // Clear the active Remnant so the room starts fresh
+  state.entities.remnant = null;
+
   state.player.position.x = levelData.playerSpawn.x;
   state.player.position.y = levelData.playerSpawn.y;
   state.player.velocity.x = 0;
@@ -88,7 +98,6 @@ function loadLevel(levelData) {
   // Start a fresh recorder for this run
   state.remnant.recorder       = createRecorder();
   state.remnant.latestTimeline = [];
-  state.remnant.captureLabel   = '';
 }
 
 // ---------------------------------------------------------------------------
@@ -174,7 +183,15 @@ function updateGoal(player) {
 }
 
 /**
- * Tick the recorder and handle Remnant capture input.
+ * Tick the recorder and handle Remnant commit input.
+ *
+ * Pressing R:
+ *  1. captures the current buffered timeline
+ *  2. creates a Remnant entity if there are enough samples
+ *  3. replaces any existing active Remnant
+ *  4. resets the player to the level spawn
+ *  5. starts a fresh recorder so the new run records cleanly
+ *
  * @param {number} nowMs - Current wall-clock time in milliseconds.
  */
 function updateRemnant(nowMs) {
@@ -183,13 +200,42 @@ function updateRemnant(nowMs) {
 
   tickRecorder(recorder, state.player, nowMs);
 
-  // R — capture the current timeline (one-shot, no replay yet)
   if (wasKeyJustPressed('KeyR')) {
-    state.remnant.latestTimeline = getCurrentRecording(recorder);
-    const count = state.remnant.latestTimeline.length;
-    state.remnant.captureLabel = `Timeline captured (${count} snapshots)`;
-    console.log('Timeline captured:', state.remnant.latestTimeline);
+    const timeline = getCurrentRecording(recorder);
+    state.remnant.latestTimeline = timeline;
+
+    if (timeline.length >= MIN_REMNANT_SAMPLES) {
+      // Create and store the active Remnant (replaces any previous one)
+      state.entities.remnant = createRemnant(timeline);
+
+      // Reset player to spawn so the new run begins cleanly
+      state.player.position.x = state.level.playerSpawn.x;
+      state.player.position.y = state.level.playerSpawn.y;
+      state.player.velocity.x = 0;
+      state.player.velocity.y = 0;
+      state.player.isGrounded = false;
+
+      // Start a fresh recorder — the replay and recording are now independent
+      state.remnant.recorder = createRecorder();
+
+      console.log(
+        `Remnant spawned: ${timeline.length} samples, ` +
+        `duration ${(state.entities.remnant.duration / 1000).toFixed(2)}s`,
+      );
+    } else {
+      console.log(`Timeline too short to spawn a Remnant (${timeline.length} samples)`);
+    }
   }
+}
+
+/**
+ * Advance the active Remnant's playback each frame.
+ * @param {number} dt - Delta time in seconds.
+ */
+function updateReplay(dt) {
+  const { remnant } = state.entities;
+  if (!remnant) return;
+  advanceRemnant(remnant, dt);
 }
 
 /**
@@ -257,6 +303,7 @@ export function update(dt) {
   updatePlayer(dt);
   updateGoal(state.player);
   updateRemnant(performance.now());
+  updateReplay(dt);
 
   // Clear one-shot key presses after all systems have read them.
   clearJustPressed();
@@ -266,17 +313,18 @@ export function update(dt) {
  * Render the current frame.
  */
 export function render() {
-  const { recorder, captureLabel } = state.remnant;
-  const snapshotCount    = recorder ? getSnapshotCount(recorder) : 0;
-  const bufferedSeconds  = recorder ? getBufferedSeconds(recorder) : 0;
+  const { recorder } = state.remnant;
+  const snapshotCount = recorder ? getSnapshotCount(recorder) : 0;
+  const activeRemnant = state.entities.remnant;
 
   clearScreen(ctx);
   drawPlatforms(ctx, state.level.platforms);
   drawInteractables(ctx, state.interactables);
+  drawRemnant(ctx, activeRemnant);
   drawPlayer(ctx, state.player.position, state.player.isGrounded);
   drawHUD(ctx, state.level.name, state.goalReached, state.level.hint, {
     snapshotCount,
-    bufferedSeconds,
-    captureLabel,
+    capturedCount: state.remnant.latestTimeline.length,
+    activeRemnant,
   });
 }
