@@ -1,6 +1,6 @@
 // Game core — world state, update logic, render dispatch
 
-import { isKeyDown } from './input.js';
+import { isKeyDown, wasKeyJustPressed, clearJustPressed } from './input.js';
 import { resolveMovement, aabbOverlap } from './physics.js';
 import {
   clearScreen,
@@ -17,6 +17,13 @@ import {
   JUMP_VELOCITY,
 } from './constants.js';
 import { level02 } from './levels/level-02.js';
+import {
+  createRecorder,
+  tickRecorder,
+  getCurrentRecording,
+  getSnapshotCount,
+  getBufferedSeconds,
+} from './systems/recorder.js';
 
 /** @type {CanvasRenderingContext2D} */
 let ctx;
@@ -44,6 +51,11 @@ const state = {
   },
   interactables: [], // buttons, doors, goal zones
   goalReached:   false,
+  remnant: {
+    recorder:       null,   // Recorder instance — created on level load
+    latestTimeline: [],     // Last captured timeline (R key)
+    captureLabel:   '',     // Debug label shown in HUD after capture
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -72,6 +84,11 @@ function loadLevel(levelData) {
   state.player.velocity.x = 0;
   state.player.velocity.y = 0;
   state.player.isGrounded = false;
+
+  // Start a fresh recorder for this run
+  state.remnant.recorder       = createRecorder();
+  state.remnant.latestTimeline = [];
+  state.remnant.captureLabel   = '';
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +174,25 @@ function updateGoal(player) {
 }
 
 /**
+ * Tick the recorder and handle Remnant capture input.
+ * @param {number} nowMs - Current wall-clock time in milliseconds.
+ */
+function updateRemnant(nowMs) {
+  const { recorder } = state.remnant;
+  if (!recorder) return;
+
+  tickRecorder(recorder, state.player, nowMs);
+
+  // R — capture the current timeline (one-shot, no replay yet)
+  if (wasKeyJustPressed('KeyR')) {
+    state.remnant.latestTimeline = getCurrentRecording(recorder);
+    const count = state.remnant.latestTimeline.length;
+    state.remnant.captureLabel = `Timeline captured (${count} snapshots)`;
+    console.log('Timeline captured:', state.remnant.latestTimeline);
+  }
+}
+
+/**
  * Handle player input and movement.
  * @param {number} dt
  */
@@ -220,15 +256,27 @@ export function update(dt) {
   updateDoors();
   updatePlayer(dt);
   updateGoal(state.player);
+  updateRemnant(performance.now());
+
+  // Clear one-shot key presses after all systems have read them.
+  clearJustPressed();
 }
 
 /**
  * Render the current frame.
  */
 export function render() {
+  const { recorder, captureLabel } = state.remnant;
+  const snapshotCount    = recorder ? getSnapshotCount(recorder) : 0;
+  const bufferedSeconds  = recorder ? getBufferedSeconds(recorder) : 0;
+
   clearScreen(ctx);
   drawPlatforms(ctx, state.level.platforms);
   drawInteractables(ctx, state.interactables);
   drawPlayer(ctx, state.player.position, state.player.isGrounded);
-  drawHUD(ctx, state.level.name, state.goalReached, state.level.hint);
+  drawHUD(ctx, state.level.name, state.goalReached, state.level.hint, {
+    snapshotCount,
+    bufferedSeconds,
+    captureLabel,
+  });
 }
