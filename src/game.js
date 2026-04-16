@@ -26,6 +26,7 @@ import {
 } from './systems/recorder.js';
 import { createRemnant } from './entities/remnant.js';
 import { advanceRemnant } from './systems/replay.js';
+import { getActivators } from './systems/interaction.js';
 
 /** Minimum number of timeline samples required to spawn a Remnant. */
 const MIN_REMNANT_SAMPLES = 3;
@@ -124,20 +125,31 @@ function getBlockingColliders() {
 
 /**
  * Update button pressed state.
- * Written to accept an array of activators so Remnants can press buttons too.
+ * Accepts a list of activators so both the live player and the active Remnant
+ * can press buttons — no separate code path for each.
  *
- * @param {Array<{ position: { x: number, y: number }, width: number, height: number }>} activators
+ * Each button gains a `pressedBy` array (the ids of current activators)
+ * which the HUD and renderer can use to show who triggered it.
+ *
+ * Activator shape: { id, type, x, y, width, height, canActivateButtons }
+ *
+ * @param {Array<{ id: string, x: number, y: number, width: number, height: number }>} activators
  */
 function updateButtons(activators) {
   for (const entity of state.interactables) {
     if (entity.type !== 'button') continue;
 
-    entity.isPressed = activators.some(a =>
-      aabbOverlap(
-        a.position.x, a.position.y, a.width, a.height,
-        entity.x, entity.y, entity.width, entity.height,
+    // Collect ids of all activators currently overlapping this button.
+    entity.pressedBy = activators
+      .filter(a =>
+        aabbOverlap(
+          a.x, a.y, a.width, a.height,
+          entity.x, entity.y, entity.width, entity.height,
+        )
       )
-    );
+      .map(a => a.id);
+
+    entity.isPressed = entity.pressedBy.length > 0;
   }
 }
 
@@ -293,17 +305,29 @@ export function init(context) {
 
 /**
  * Update all game logic for one frame.
+ * Order:
+ *   1. live player movement
+ *   2. recorder tick + Remnant commit (R key)
+ *   3. Remnant playback advance
+ *   4. gather activators (player + Remnant)
+ *   5. update buttons
+ *   6. update doors
+ *   7. update goal
+ *   8. clear one-shot input flags
+ *
  * @param {number} dt - Delta time in seconds.
  */
 export function update(dt) {
-  // Buttons must be resolved before doors (doors read button state)
-  // and before player movement (blocking colliders depend on door state).
-  updateButtons([state.player]);
-  updateDoors();
   updatePlayer(dt);
-  updateGoal(state.player);
   updateRemnant(performance.now());
   updateReplay(dt);
+
+  // Gather all entities that can trigger buttons this frame, then resolve
+  // button and door state.  Door logic reads button state, so buttons first.
+  const activators = getActivators(state);
+  updateButtons(activators);
+  updateDoors();
+  updateGoal(state.player);
 
   // Clear one-shot key presses after all systems have read them.
   clearJustPressed();
@@ -319,12 +343,13 @@ export function render() {
 
   clearScreen(ctx);
   drawPlatforms(ctx, state.level.platforms);
-  drawInteractables(ctx, state.interactables);
+  drawInteractables(ctx, state.interactables, activeRemnant);
   drawRemnant(ctx, activeRemnant);
   drawPlayer(ctx, state.player.position, state.player.isGrounded);
   drawHUD(ctx, state.level.name, state.goalReached, state.level.hint, {
     snapshotCount,
-    capturedCount: state.remnant.latestTimeline.length,
+    capturedCount:  state.remnant.latestTimeline.length,
     activeRemnant,
+    interactables:  state.interactables,
   });
 }

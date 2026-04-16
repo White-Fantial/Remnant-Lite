@@ -32,8 +32,41 @@ export function drawPlatforms(ctx, platforms) {
  * Draw all interactable entities: buttons, doors, and goal zones.
  * @param {CanvasRenderingContext2D} ctx
  * @param {Array} interactables
+ * @param {object | null} activeRemnant - Active Remnant, used to draw the
+ *   button→door link line when the Remnant is pressing a button.
  */
-export function drawInteractables(ctx, interactables) {
+export function drawInteractables(ctx, interactables, activeRemnant) {
+  // Draw a faint debug line from each pressed button to its linked door
+  // so the player can understand the puzzle at a glance.
+  if (activeRemnant) {
+    for (const button of interactables) {
+      if (button.type !== 'button' || !button.isPressed || !button.targets) continue;
+      const isRemnantPressing =
+        Array.isArray(button.pressedBy) && button.pressedBy.some(id => id !== 'player');
+      if (!isRemnantPressing) continue;
+
+      for (const targetId of button.targets) {
+        const door = interactables.find(e => e.id === targetId);
+        if (!door) continue;
+
+        const bx = button.x + button.width  / 2;
+        const by = button.y + button.height / 2;
+        const dx = door.x   + door.width    / 2;
+        const dy = door.y   + door.height   / 2;
+
+        ctx.save();
+        ctx.setLineDash([6, 6]);
+        ctx.strokeStyle = 'rgba(168, 200, 255, 0.25)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(bx, by);
+        ctx.lineTo(dx, dy);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
   for (const entity of interactables) {
     switch (entity.type) {
       case 'button':
@@ -50,24 +83,55 @@ export function drawInteractables(ctx, interactables) {
 }
 
 /**
- * Draw a floor button — green when idle, bright yellow when pressed.
+ * Draw a floor button.
+ *  - Unpressed: green
+ *  - Pressed by player only: bright yellow
+ *  - Pressed by Remnant (alone or together): blue-white tint
+ *    A small "GHOST" label distinguishes Remnant activation at a glance.
+ *
  * @param {CanvasRenderingContext2D} ctx
- * @param {{ x: number, y: number, width: number, height: number, isPressed: boolean }} button
+ * @param {{ x: number, y: number, width: number, height: number,
+ *           isPressed: boolean, pressedBy?: string[] }} button
  */
 function drawButton(ctx, button) {
-  // Base pad
-  ctx.fillStyle = button.isPressed ? '#f5c518' : '#2ecc71';
+  const isRemnantPressing =
+    button.isPressed &&
+    Array.isArray(button.pressedBy) &&
+    button.pressedBy.some(id => id !== 'player');
+
+  // Base pad — color indicates who is pressing
+  if (!button.isPressed) {
+    ctx.fillStyle = '#2ecc71'; // unpressed — green
+  } else if (isRemnantPressing) {
+    ctx.fillStyle = '#7eb8f7'; // Remnant pressing — cool blue
+  } else {
+    ctx.fillStyle = '#f5c518'; // player pressing — bright yellow
+  }
   ctx.fillRect(button.x, button.y, button.width, button.height);
 
-  // Darker inset to show it can be pressed
+  // Darker inset to show depth
   const inset = 3;
-  ctx.fillStyle = button.isPressed ? '#c49a14' : '#27ae60';
+  if (!button.isPressed) {
+    ctx.fillStyle = '#27ae60';
+  } else if (isRemnantPressing) {
+    ctx.fillStyle = '#4a8fd4';
+  } else {
+    ctx.fillStyle = '#c49a14';
+  }
   ctx.fillRect(
     button.x + inset,
     button.y + inset,
     button.width - inset * 2,
     button.height - inset * 2,
   );
+
+  // Small label above the button when the Remnant is the activator
+  if (isRemnantPressing) {
+    ctx.fillStyle = 'rgba(168, 200, 255, 0.9)';
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('GHOST', button.x + button.width / 2, button.y - 4);
+  }
 }
 
 /**
@@ -164,9 +228,10 @@ export function drawRemnant(ctx, remnant) {
  * @param {boolean} goalReached
  * @param {string} [hint]
  * @param {{
- *   snapshotCount: number,
- *   capturedCount: number,
- *   activeRemnant: object | null,
+ *   snapshotCount:  number,
+ *   capturedCount:  number,
+ *   activeRemnant:  object | null,
+ *   interactables?: Array,
  * }} [recording]
  */
 export function drawHUD(ctx, levelName, goalReached, hint, recording) {
@@ -210,6 +275,33 @@ export function drawHUD(ctx, levelName, goalReached, hint, recording) {
       const duration = (r.duration     / 1000).toFixed(2);
       ctx.fillStyle = 'rgba(168,200,255,0.6)';
       ctx.fillText(`Remnant Time: ${current} / ${duration}`, 12, 91);
+    }
+
+    // Button state — shown when interactables are available
+    if (recording.interactables) {
+      const buttons = recording.interactables.filter(e => e.type === 'button');
+      if (buttons.length > 0) {
+        const button = buttons[0]; // show first button for now
+        let buttonLabel;
+        if (!button.isPressed) {
+          buttonLabel = 'None';
+        } else if (
+          Array.isArray(button.pressedBy) &&
+          button.pressedBy.some(id => id !== 'player') &&
+          button.pressedBy.includes('player')
+        ) {
+          buttonLabel = 'Player + Remnant';
+        } else if (
+          Array.isArray(button.pressedBy) &&
+          button.pressedBy.some(id => id !== 'player')
+        ) {
+          buttonLabel = 'Remnant';
+        } else {
+          buttonLabel = 'Player';
+        }
+        ctx.fillStyle = 'rgba(255,220,100,0.75)';
+        ctx.fillText(`Button: ${buttonLabel}`, 12, 108);
+      }
     }
   }
 

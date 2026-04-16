@@ -1,13 +1,23 @@
-// Level 02 — first puzzle room: button, door, goal
+// Level 02 — Remnant puzzle room: "Past Self, Open the Way"
 //
-// Layout intent:
-//   The player must stand on the floor button to open the door and walk
-//   through. But leaving the button closes the door again — a deliberate
-//   hint that a Remnant holding the button will be the real solution later.
+// Core fantasy: the player cannot hold the button AND walk through the door
+// at the same time.  The intended solution is:
+//   1. Walk onto the floor button — the door opens.
+//   2. Press R to commit a Remnant, then return to spawn.
+//   3. The Remnant replays and stands on the button, keeping the door open.
+//   4. Run through the open door and reach the goal.
 //
-// Coordinate system: origin top-left, Y increases downward.
-// Canvas: 800 × 450.  Ground floor top surface sits at y = 420.
-// Player height = 48, so spawn y = 420 - 48 = 372 to rest on the floor.
+// Layout (800 × 450, Y increases downward, ground at y = 420):
+//   - Player spawns far left (x = 60).
+//   - Button sits on the left-hand ground (x = 160).
+//   - A solid wall with a door gap divides the room at x = 420.
+//   - Goal zone sits on the right side (x = 660).
+//
+// The wall above the door (y 0–300) prevents the player from jumping over,
+// and the door (y 300–420) blocks horizontal movement when closed.
+// The button is close enough to reach easily, but far enough from the door
+// that leaving the button immediately closes the door before the player
+// can slip through — making the Remnant the only solution.
 
 /**
  * @typedef {{ x: number, y: number, width: number, height: number, type: string }} Platform
@@ -33,8 +43,9 @@
 
 /** @type {LevelData} */
 export const level02 = {
-  name: 'Level 2 — The Button Room',
-  hint: 'Stand on the button to open the door',
+  id:   'level_02',
+  name: 'Past Self, Open the Way',
+  hint: 'Leave a Remnant on the button, then run through the door.',
 
   playerSpawn: { x: 60, y: 372 },
 

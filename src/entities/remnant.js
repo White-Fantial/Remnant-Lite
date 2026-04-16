@@ -18,19 +18,21 @@ let _nextId = 1;
  * }>} timeline - Normalized timeline (first sample at t = 0).
  *
  * @returns {{
- *   id:          string,
- *   type:        'remnant',
- *   timeline:    Array,
- *   currentTime: number,
- *   duration:    number,
- *   isPlaying:   boolean,
- *   isFinished:  boolean,
- *   x:           number,
- *   y:           number,
- *   facing:      number,
- *   isGrounded:  boolean,
- *   width:       number,
- *   height:      number,
+ *   id:                string,
+ *   type:              'remnant',
+ *   timeline:          Array,
+ *   currentTime:       number,
+ *   duration:          number,
+ *   isPlaying:         boolean,
+ *   isFinished:        boolean,
+ *   x:                 number,
+ *   y:                 number,
+ *   facing:            number,
+ *   isGrounded:        boolean,
+ *   width:             number,
+ *   height:            number,
+ *   canActivateButtons: boolean,
+ *   isSolidToPlayer:   boolean,
  * }}
  */
 export function createRemnant(timeline) {
@@ -52,5 +54,10 @@ export function createRemnant(timeline) {
     isGrounded:  first.isGrounded,
     width:       PLAYER_WIDTH,
     height:      PLAYER_HEIGHT,
+    // Phase 6: Remnant can press buttons but is not yet physically solid.
+    // These two flags are intentionally separate so the solid phase can
+    // enable isSolidToPlayer independently in a later phase.
+    canActivateButtons: true,
+    isSolidToPlayer:    false,
   };
 }
