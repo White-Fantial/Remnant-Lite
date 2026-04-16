@@ -75,7 +75,7 @@ export function drawMenuScreen(ctx) {
   ctx.fillStyle = 'rgba(168,200,255,0.65)';
   ctx.font      = '13px monospace';
   ctx.fillText('Move: ← → / A D      Jump: ↑ / W / Space', CANVAS_WIDTH / 2, 228);
-  ctx.fillText('R — Leave Echo     T — Restart     N — Next level', CANVAS_WIDTH / 2, 248);
+  ctx.fillText('R — Leave Echo     T — Restart     O — Observe     E — Export data', CANVAS_WIDTH / 2, 248);
 
   // "Press Enter" prompt — pulsing
   const pulse = 0.55 + 0.45 * Math.sin(t * 2.5);
@@ -88,7 +88,7 @@ export function drawMenuScreen(ctx) {
   // Footer
   ctx.fillStyle = 'rgba(255,255,255,0.18)';
   ctx.font      = '11px monospace';
-  ctx.fillText('Phase 10 Demo', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 16);
+  ctx.fillText('Phase 11 Playtest Build', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 16);
 }
 
 // ---------------------------------------------------------------------------
@@ -98,36 +98,82 @@ export function drawMenuScreen(ctx) {
 /**
  * Draw the end-of-demo screen shown after the last tutorial level is cleared.
  *
+ * When sessionMetrics is provided the screen shows a brief session summary:
+ * total time, total Remnants created, total restarts, and levels completed.
+ *
  * @param {CanvasRenderingContext2D} ctx
+ * @param {object} [sessionMetrics]
  */
-export function drawGameCompleteScreen(ctx) {
+export function drawGameCompleteScreen(ctx, sessionMetrics) {
   // Background
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
   // Gold accent panel
   ctx.fillStyle = 'rgba(255,215,0,0.08)';
-  ctx.fillRect(0, CANVAS_HEIGHT / 2 - 110, CANVAS_WIDTH, 220);
+  ctx.fillRect(0, CANVAS_HEIGHT / 2 - 130, CANVAS_WIDTH, 260);
 
   ctx.strokeStyle = 'rgba(255,215,0,0.18)';
   ctx.lineWidth   = 1;
-  ctx.strokeRect(60, CANVAS_HEIGHT / 2 - 110, CANVAS_WIDTH - 120, 220);
+  ctx.strokeRect(60, CANVAS_HEIGHT / 2 - 130, CANVAS_WIDTH - 120, 260);
 
   // Title
   ctx.fillStyle = '#ffd700';
   ctx.font      = 'bold 38px monospace';
   ctx.textAlign = 'center';
-  ctx.fillText('Tutorial Complete', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 44);
+  ctx.fillText('Tutorial Complete', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 72);
 
-  // Summary
+  // Summary line
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.font      = '16px monospace';
-  ctx.fillText('You used your past self to solve puzzles.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 4);
+  ctx.font      = '15px monospace';
+  ctx.fillText('You used your past self to solve puzzles.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 38);
+
+  // Session stats (if available)
+  if (sessionMetrics) {
+    const totalSec   = Math.round(sessionMetrics.totalTime);
+    const mins       = Math.floor(totalSec / 60);
+    const secs       = totalSec % 60;
+    const timeStr    = mins > 0
+      ? `${mins}m ${secs}s`
+      : `${secs}s`;
+
+    ctx.fillStyle = 'rgba(168,200,255,0.9)';
+    ctx.font      = '13px monospace';
+    ctx.textAlign = 'center';
+
+    ctx.fillText(`Total time:      ${timeStr}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 8);
+    ctx.fillText(
+      `Echoes created:  ${sessionMetrics.totalRemnants}`,
+      CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10,
+    );
+    ctx.fillText(
+      `Total restarts:  ${sessionMetrics.totalRestarts}`,
+      CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 28,
+    );
+    ctx.fillText(
+      `Levels finished: ${sessionMetrics.levelsCompleted}`,
+      CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 46,
+    );
+
+    // Insight line
+    ctx.fillStyle = 'rgba(100,220,255,0.6)';
+    ctx.font      = '12px monospace';
+    const remStr  = sessionMetrics.totalRemnants === 1 ? '1 past self' : `${sessionMetrics.totalRemnants} past selves`;
+    ctx.fillText(
+      `You used ${remStr} to solve puzzles.`,
+      CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 70,
+    );
+
+    // Export hint
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.font      = '11px monospace';
+    ctx.fillText('Press E at any time to export your session data.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 90);
+  }
 
   // Prototype note
-  ctx.fillStyle = 'rgba(168,200,255,0.55)';
-  ctx.font      = '13px monospace';
-  ctx.fillText('This is a prototype of Remnant.', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 24);
+  ctx.fillStyle = 'rgba(168,200,255,0.4)';
+  ctx.font      = '12px monospace';
+  ctx.fillText('Phase 11 Playtest Build', CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20);
 
   // Restart prompt — pulsing
   const t     = Date.now() / 1000;
@@ -135,7 +181,7 @@ export function drawGameCompleteScreen(ctx) {
   ctx.globalAlpha = pulse;
   ctx.fillStyle   = '#64dcff';
   ctx.font        = 'bold 16px monospace';
-  ctx.fillText('Press ENTER or R to Play Again', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 84);
+  ctx.fillText('Press ENTER or R to Play Again', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 118);
   ctx.globalAlpha = 1;
 }
 
@@ -225,16 +271,29 @@ export function drawInteractables(ctx, interactables, remnants) {
  *  - Pressed by player only: bright yellow
  *  - Pressed by Remnant (alone or together): blue-white tint
  *    A small "GHOST" label distinguishes Remnant activation at a glance.
+ *  - successFlash: brief bright white halo when a Remnant first presses it.
  *
  * @param {CanvasRenderingContext2D} ctx
  * @param {{ x: number, y: number, width: number, height: number,
- *           isPressed: boolean, pressedBy?: string[] }} button
+ *           isPressed: boolean, pressedBy?: string[],
+ *           successFlash?: number }} button
  */
 function drawButton(ctx, button) {
   const isRemnantPressing =
     button.isPressed &&
     Array.isArray(button.pressedBy) &&
     button.pressedBy.some(id => id !== 'player');
+
+  // Ghost success highlight — bright halo when Remnant first activates button
+  if (button.successFlash > 0) {
+    const alpha = Math.min(1, button.successFlash) * 0.5;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle   = '#ffffff';
+    ctx.fillRect(button.x - 6, button.y - 6, button.width + 12, button.height + 12);
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
 
   // Base pad — color indicates who is pressing
   if (!button.isPressed) {
@@ -273,11 +332,25 @@ function drawButton(ctx, button) {
 
 /**
  * Draw a door — solid red-orange block when closed, faint outline when open.
+ * Shows a brief cyan flash (successFlash) when a Remnant opens it.
+ *
  * @param {CanvasRenderingContext2D} ctx
- * @param {{ x: number, y: number, width: number, height: number, isOpen: boolean }} door
+ * @param {{ x: number, y: number, width: number, height: number,
+ *           isOpen: boolean, successFlash?: number }} door
  */
 function drawDoor(ctx, door) {
   if (door.isOpen) {
+    // Success highlight — brief cyan flash when a Remnant first opens the door
+    if (door.successFlash > 0) {
+      const alpha = Math.min(1, door.successFlash) * 0.45;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle   = '#64dcff';
+      ctx.fillRect(door.x - 4, door.y - 4, door.width + 8, door.height + 8);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
     // Open — render a ghost outline only so the player can see where the door was
     ctx.strokeStyle = 'rgba(200, 100, 50, 0.3)';
     ctx.lineWidth = 2;
@@ -485,6 +558,8 @@ export function drawUIMessage(ctx, message, timer, total = 2.0) {
  *   remnants:          object[],
  *   maxRemnants:       number,
  *   interactables:     Array,
+ *   observationMode?:  boolean,
+ *   playtestEnabled?:  boolean,
  * }} hud
  */
 export function drawHUD(ctx, hud) {
@@ -503,6 +578,8 @@ export function drawHUD(ctx, hud) {
     remnants,
     maxRemnants,
     interactables,
+    observationMode  = false,
+    playtestEnabled  = false,
   } = hud;
 
   ctx.textAlign = 'left';
@@ -605,11 +682,21 @@ export function drawHUD(ctx, hud) {
 
   // Controls
   ctx.fillStyle = 'rgba(100,220,255,0.45)';
-  ctx.fillText('R — leave an echo   T — restart level   F1 — debug', 12, CANVAS_HEIGHT - 30);
+  ctx.fillText('R — echo   T — restart   O — observe   E — export   F1 — debug', 12, CANVAS_HEIGHT - 30);
 
   if (levelComplete) {
     ctx.fillStyle = 'rgba(100,220,255,0.45)';
     ctx.fillText('N — next level', 12, CANVAS_HEIGHT - 14);
+  }
+
+  // Observation mode indicator — shown in top-right corner when active
+  if (observationMode) {
+    ctx.save();
+    ctx.textAlign   = 'right';
+    ctx.fillStyle   = 'rgba(100,220,255,0.9)';
+    ctx.font        = 'bold 12px monospace';
+    ctx.fillText('● OBSERVATION  0.3×', CANVAS_WIDTH - 12, 20);
+    ctx.restore();
   }
 
   // ── Fail state banner ─────────────────────────────────────────────────────
