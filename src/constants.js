@@ -9,5 +9,3 @@ export const JUMP_VELOCITY = -620; // pixels per second (upward)
 
 export const PLAYER_WIDTH = 32;
 export const PLAYER_HEIGHT = 48;
-
-export const FLOOR_Y = CANVAS_HEIGHT; // y-coordinate of the floor (bottom of canvas)
